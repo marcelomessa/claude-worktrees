@@ -1,0 +1,23 @@
+# Temporary files
+*.tmp
+*.log
+*.pid
+
+# State files (runtime)
+state.json
+*-state.json
+*-config.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Node (if using daemon)
+node_modules/
+package-lock.json

@@ -1,0 +1,106 @@
+#!/bin/bash
+# =============================================================================
+# WT-MSG - Inter-agent messaging
+# =============================================================================
+# Usage:
+#   wt-msg send <worker> "message"
+#   wt-msg broadcast "message"
+#   wt-msg check
+#   wt-msg status
+# =============================================================================
+
+STATE_FILE="/tmp/claude-wt-state.json"
+WORKER_ID="${CLAUDE_WORKER_ID:-$(basename "$PWD")}"
+
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+RED='\033[0;31m'
+NC='\033[0m'
+
+# Initialize state file if needed
+init_state() {
+  [[ ! -f "$STATE_FILE" ]] && echo '{"workers":{},"messages":[]}' > "$STATE_FILE"
+}
+
+case "${1:-help}" in
+  send)
+    TARGET="$2"
+    MESSAGE="$3"
+    [[ -z "$TARGET" || -z "$MESSAGE" ]] && echo -e "${RED}Uso: wt-msg send <worker> \"msg\"${NC}" && exit 1
+
+    init_state
+    TIMESTAMP=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+    jq ".messages += [{\"to\":\"$TARGET\",\"from\":\"$WORKER_ID\",\"content\":\"$MESSAGE\",\"timestamp\":\"$TIMESTAMP\",\"read\":false}]" \
+      "$STATE_FILE" > "$STATE_FILE.tmp" && mv "$STATE_FILE.tmp" "$STATE_FILE"
+    echo -e "${GREEN}Mensagem enviada para $TARGET${NC}"
+    ;;
+
+  broadcast)
+    MESSAGE="$2"
+    [[ -z "$MESSAGE" ]] && echo -e "${RED}Uso: wt-msg broadcast \"msg\"${NC}" && exit 1
+
+    init_state
+    TIMESTAMP=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+    jq ".messages += [{\"to\":\"all\",\"from\":\"$WORKER_ID\",\"content\":\"$MESSAGE\",\"timestamp\":\"$TIMESTAMP\",\"read\":false}]" \
+      "$STATE_FILE" > "$STATE_FILE.tmp" && mv "$STATE_FILE.tmp" "$STATE_FILE"
+    echo -e "${GREEN}Broadcast enviado${NC}"
+    ;;
+
+  check)
+    init_state
+    count=$(jq "[.messages[] | select(.to == \"$WORKER_ID\" or .to == \"all\") | select(.read == false)] | length" "$STATE_FILE")
+    if [[ "$count" -gt 0 ]]; then
+      echo -e "${YELLOW}$count mensagem(ns) pendente(s)${NC}"
+      exit 0
+    else
+      echo -e "${GREEN}Nenhuma mensagem${NC}"
+      exit 1
+    fi
+    ;;
+
+  read)
+    init_state
+    echo -e "${BLUE}═══════════════════════════════════════${NC}"
+    echo -e "${BLUE} Mensagens para: $WORKER_ID${NC}"
+    echo -e "${BLUE}═══════════════════════════════════════${NC}"
+
+    jq -r ".messages[] | select(.to == \"$WORKER_ID\" or .to == \"all\") | select(.read == false) | \"\\nDe: \(.from)\\nTempo: \(.timestamp)\\n\\n\(.content)\\n───────────────────────────────────────\"" "$STATE_FILE"
+
+    # Mark as read
+    jq "(.messages[] | select(.to == \"$WORKER_ID\" or .to == \"all\")).read = true" "$STATE_FILE" > "$STATE_FILE.tmp" && mv "$STATE_FILE.tmp" "$STATE_FILE"
+    ;;
+
+  status)
+    init_state
+    echo -e "${BLUE}═══════════════════════════════════════${NC}"
+    echo -e "${BLUE} Status do Worktrees${NC}"
+    echo -e "${BLUE}═══════════════════════════════════════${NC}"
+
+    if [[ -f "/tmp/claude-wt-config.json" ]]; then
+      echo ""
+      echo "Repo: $(jq -r '.repo' /tmp/claude-wt-config.json)"
+      echo "Base: $(jq -r '.base' /tmp/claude-wt-config.json)"
+      echo "Tipo: $(jq -r '.type' /tmp/claude-wt-config.json)"
+      echo "Workers: $(jq -r '.workers | join(", ")' /tmp/claude-wt-config.json)"
+    fi
+
+    echo ""
+    total=$(jq '.messages | length' "$STATE_FILE")
+    unread=$(jq '[.messages[] | select(.read == false)] | length' "$STATE_FILE")
+    echo "Mensagens: $unread pendentes / $total total"
+    ;;
+
+  help|*)
+    echo -e "${BLUE}WT-MSG - Mensagens entre agentes${NC}"
+    echo ""
+    echo "Comandos:"
+    echo "  send <worker> \"msg\"   Envia mensagem"
+    echo "  broadcast \"msg\"       Para todos"
+    echo "  check                  Verifica pendentes"
+    echo "  read                   Lê mensagens"
+    echo "  status                 Status do wt"
+    echo ""
+    echo "Worker atual: $WORKER_ID"
+    ;;
+esac
