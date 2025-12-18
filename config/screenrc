@@ -1,0 +1,66 @@
+# =============================================================================
+# Claude Worktrees - Screen Configuration
+# =============================================================================
+
+# Scroll and buffer
+defscrollback 50000
+termcapinfo xterm* ti@:te@
+
+# Disable startup message
+startup_message off
+
+# UTF-8
+defutf8 on
+
+# Visual bell instead of audio
+vbell on
+vbell_msg "  !! Bell !!  "
+
+# Status bar at bottom
+hardstatus alwayslastline
+hardstatus string '%{= kw}%-w%{= bw}%n %t%{-}%+w %-= %{= kG}%H%{-} %{= kY}%c%{-}'
+
+# Window title format
+shelltitle "$ |bash"
+
+# Mouse support
+mousetrack on
+
+# Fast switching
+bind ' ' windowlist -b
+bind ^a other
+
+# Easy navigation
+bind j focus down
+bind k focus up
+bind h focus left
+bind l focus right
+
+# Quick window switching
+bind 1 select 0
+bind 2 select 1
+bind 3 select 2
+bind 4 select 3
+bind 5 select 4
+bind 6 select 5
+
+# Resize regions
+bind = resize =
+bind + resize +1
+bind - resize -1
+
+# Activity monitoring
+defmonitor on
+activity "%c activity -> %n%f %t"
+
+# Don't block when a window goes unresponsive
+nonblock on
+
+# Automatically detach on hangup
+autodetach on
+
+# No flow control
+defflow off
+
+# 256 colors
+term screen-256color

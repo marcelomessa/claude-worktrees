@@ -15,6 +15,7 @@ set -e
 
 WT_HOME="${WT_HOME:-$(dirname "$(dirname "$(realpath "$0")")")}"
 SESSION_NAME="claude-wt"
+SCREENRC="$WT_HOME/config/screenrc"
 PULSER_INTERVAL=${PULSER_INTERVAL:-30}
 
 # Colors
@@ -168,7 +169,7 @@ create_wt_session() {
 EOF
 
   # Create screen session
-  screen -dmS "$SESSION_NAME"
+  screen -c "$SCREENRC" -dmS "$SESSION_NAME"
   sleep 0.5
 
   # Window 0: Coordinator
@@ -354,7 +355,7 @@ EOF
 
   # Create screen session
   echo -e "${CYAN}Criando sessão...${NC}"
-  screen -dmS "$SESSION_NAME"
+  screen -c "$SCREENRC" -dmS "$SESSION_NAME"
   sleep 0.5
 
   # Window 0: Coordinator
