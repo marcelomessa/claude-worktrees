@@ -338,7 +338,7 @@ quick_mode() {
 
   local repo_root=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
   local repo_name=$(basename "$repo_root")
-  local base_branch=$(git branch --show-current 2>/dev/null || echo "main")
+  local base_branch="${BASE_BRANCH:-$(git branch --show-current 2>/dev/null || echo 'main')}"
 
   echo -e "Repositório: ${GREEN}$repo_name${NC}"
   echo -e "Workers: ${GREEN}${workers[*]}${NC}"
@@ -424,31 +424,48 @@ EOF
 # Main
 # =============================================================================
 
-case "${1:-}" in
-  --help|-h)
-    print_help
-    exit 0
-    ;;
-  --list)
-    screen -list | grep claude-wt || echo "Nenhuma sessão ativa"
-    exit 0
-    ;;
-  --kill)
-    pkill -f "pulser" 2>/dev/null || true
-    screen -X -S "$SESSION_NAME" quit 2>/dev/null || true
-    rm -f /tmp/claude-wt-*.pid /tmp/claude-wt-*.json /tmp/claude-wt.log
-    echo "Worktrees encerrado"
-    exit 0
-    ;;
-  --quick|-q)
-    shift
-    quick_mode "$@"
-    ;;
-  "")
-    interactive_mode
-    ;;
-  *)
-    # Direct arguments = quick mode with workers
-    quick_mode "$@"
-    ;;
-esac
+# Parse arguments
+BASE_BRANCH=""
+WORKERS=()
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --help|-h)
+      print_help
+      exit 0
+      ;;
+    --list)
+      screen -list | grep claude-wt || echo "Nenhuma sessão ativa"
+      exit 0
+      ;;
+    --kill)
+      pkill -f "pulser" 2>/dev/null || true
+      screen -X -S "$SESSION_NAME" quit 2>/dev/null || true
+      rm -f /tmp/claude-wt-*.pid /tmp/claude-wt-*.json /tmp/claude-wt.log
+      echo "Worktrees encerrado"
+      exit 0
+      ;;
+    --base|-b)
+      BASE_BRANCH="$2"
+      shift 2
+      ;;
+    --quick|-q)
+      shift
+      ;;
+    -*)
+      echo "Opção desconhecida: $1"
+      exit 1
+      ;;
+    *)
+      WORKERS+=("$1")
+      shift
+      ;;
+  esac
+done
+
+# Decide mode
+if [[ ${#WORKERS[@]} -gt 0 ]]; then
+  quick_mode "${WORKERS[@]}"
+else
+  interactive_mode
+fi
