@@ -1,0 +1,22 @@
+{
+  "env": {
+    "CLAUDE_WORKER_ID": "WORKER_NAME"
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "~/.claude-worktrees/hooks/statusline.sh"
+  },
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude-worktrees/hooks/init-worker.sh",
+            "timeout": 5000
+          }
+        ]
+      }
+    ]
+  }
+}
