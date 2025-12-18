@@ -106,10 +106,8 @@ check_git_repo() {
 
 check_existing_session() {
   if screen -list | grep -q "$SESSION_NAME"; then
-    echo -e "${YELLOW}Sessão '$SESSION_NAME' já existe.${NC}"
-    echo "  screen -r $SESSION_NAME    # Reconectar"
-    echo "  cwt --kill              # Encerrar"
-    exit 1
+    echo -e "${YELLOW}Sessão '$SESSION_NAME' já existe. Reconectando...${NC}"
+    exec screen -r "$SESSION_NAME"
   fi
 }
 
