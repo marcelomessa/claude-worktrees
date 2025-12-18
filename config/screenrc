@@ -16,9 +16,9 @@ defutf8 on
 vbell on
 vbell_msg "  !! Bell !!  "
 
-# Status bar at bottom
+# Status bar at bottom (text colors only, no background)
 hardstatus alwayslastline
-hardstatus string '%{= kw}%-w%{= bw}%n %t%{-}%+w %-= %{= kG}%H%{-} %{= kY}%c%{-}'
+hardstatus string '%-w[%n %t]%+w %= %H %c'
 
 # Window title format
 shelltitle "$ |bash"
