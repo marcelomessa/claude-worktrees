@@ -366,7 +366,7 @@ EOF
   sleep 0.1
   screen -S "$SESSION_NAME" -p 0 -X stuff "cd '$repo_root'"$'\n'
   sleep 0.1
-  screen -S "$SESSION_NAME" -p 0 -X stuff "claude"$'\n'
+  screen -S "$SESSION_NAME" -p 0 -X stuff "claude $CONTINUE_SESSION"$'\n'
 
   local window_num=1
 
@@ -397,7 +397,7 @@ EOF
     sleep 0.1
     screen -S "$SESSION_NAME" -p "$window_num" -X stuff "cd '$worktree_path'"$'\n'
     sleep 0.1
-    screen -S "$SESSION_NAME" -p "$window_num" -X stuff "claude"$'\n'
+    screen -S "$SESSION_NAME" -p "$window_num" -X stuff "claude $CONTINUE_SESSION"$'\n'
 
     ((window_num++))
   done
@@ -426,6 +426,7 @@ EOF
 
 # Parse arguments
 BASE_BRANCH=""
+CONTINUE_SESSION=""
 WORKERS=()
 
 while [[ $# -gt 0 ]]; do
@@ -448,6 +449,10 @@ while [[ $# -gt 0 ]]; do
     --base|-b)
       BASE_BRANCH="$2"
       shift 2
+      ;;
+    --continue|-c)
+      CONTINUE_SESSION="--continue"
+      shift
       ;;
     --quick|-q)
       shift
