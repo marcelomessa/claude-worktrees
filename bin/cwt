@@ -73,9 +73,9 @@ prompt() {
   local result
 
   if [[ -n "$default" ]]; then
-    printf "${YELLOW}%s ${NC}[%s]: " "$question" "$default"
+    printf "${YELLOW}%s ${NC}[%s]: " "$question" "$default" >/dev/tty
   else
-    printf "${YELLOW}%s: ${NC}" "$question"
+    printf "${YELLOW}%s: ${NC}" "$question" >/dev/tty
   fi
   read -r result </dev/tty
   echo "${result:-$default}"
@@ -86,11 +86,11 @@ prompt_select() {
   shift
   local options=("$@")
 
-  echo -e "${YELLOW}$question${NC}"
+  echo -e "${YELLOW}$question${NC}" >/dev/tty
   for i in "${!options[@]}"; do
-    echo "  $((i+1))) ${options[$i]}"
+    echo "  $((i+1))) ${options[$i]}" >/dev/tty
   done
-  printf "Escolha [1]: "
+  printf "Escolha [1]: " >/dev/tty
   read -r choice </dev/tty
   choice=${choice:-1}
   echo "${options[$((choice-1))]}"
