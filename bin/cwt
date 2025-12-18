@@ -321,6 +321,106 @@ interactive_mode() {
 }
 
 # =============================================================================
+# Quick Mode - Use existing worktrees
+# =============================================================================
+
+quick_mode() {
+  local workers=("$@")
+
+  if [[ ${#workers[@]} -eq 0 ]]; then
+    echo -e "${RED}Uso: cwt <worker1> <worker2> ...${NC}" >/dev/tty
+    echo "Exemplo: cwt security-features ui-performance" >/dev/tty
+    exit 1
+  fi
+
+  print_header
+  check_existing_session
+
+  local repo_root=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+  local repo_name=$(basename "$repo_root")
+  local base_branch=$(git branch --show-current 2>/dev/null || echo "main")
+
+  echo -e "Repositório: ${GREEN}$repo_name${NC}"
+  echo -e "Workers: ${GREEN}${workers[*]}${NC}"
+  echo ""
+
+  # Save config for pulser
+  local config_file="/tmp/claude-wt-config.json"
+  cat > "$config_file" << EOF
+{
+  "repo": "$repo_root",
+  "base": "$base_branch",
+  "workers": [$(printf '"%s",' "${workers[@]}" | sed 's/,$//')]
+}
+EOF
+
+  # Create screen session
+  echo -e "${CYAN}Criando sessão...${NC}"
+  screen -dmS "$SESSION_NAME"
+  sleep 0.5
+
+  # Window 0: Coordinator
+  echo -e "  ${GREEN}[0] coord${NC} → $base_branch"
+  screen -S "$SESSION_NAME" -X title "coord"
+  screen -S "$SESSION_NAME" -p 0 -X stuff "export CLAUDE_WORKER_ID='coord'"$'\n'
+  sleep 0.1
+  screen -S "$SESSION_NAME" -p 0 -X stuff "cd '$repo_root'"$'\n'
+  sleep 0.1
+  screen -S "$SESSION_NAME" -p 0 -X stuff "claude"$'\n'
+
+  local window_num=1
+
+  # Worker Windows
+  for worker in "${workers[@]}"; do
+    # Try to find worktree: workspace-X, worktree-X, or X
+    local worktree_path=""
+    for pattern in "workspace-$worker" "worktree-$worker" "$worker"; do
+      if [[ -d "$repo_root/../$pattern" ]]; then
+        worktree_path="$repo_root/../$pattern"
+        break
+      elif [[ -d "$repo_root/$pattern" ]]; then
+        worktree_path="$repo_root/$pattern"
+        break
+      fi
+    done
+
+    if [[ -z "$worktree_path" ]]; then
+      echo -e "  ${YELLOW}[$window_num] $worker${NC} → (diretório não encontrado, usando repo)"
+      worktree_path="$repo_root"
+    else
+      echo -e "  ${GREEN}[$window_num] $worker${NC} → $worktree_path"
+    fi
+
+    screen -S "$SESSION_NAME" -X screen -t "$worker"
+    sleep 0.3
+    screen -S "$SESSION_NAME" -p "$window_num" -X stuff "export CLAUDE_WORKER_ID='$worker'"$'\n'
+    sleep 0.1
+    screen -S "$SESSION_NAME" -p "$window_num" -X stuff "cd '$worktree_path'"$'\n'
+    sleep 0.1
+    screen -S "$SESSION_NAME" -p "$window_num" -X stuff "claude"$'\n'
+
+    ((window_num++))
+  done
+
+  # Monitor Window
+  echo -e "  ${GREEN}[$window_num] monitor${NC} → logs"
+  screen -S "$SESSION_NAME" -X screen -t "monitor"
+  sleep 0.3
+  screen -S "$SESSION_NAME" -p "$window_num" -X stuff "tail -f /tmp/claude-wt.log 2>/dev/null || echo 'Aguardando logs...'"$'\n'
+
+  # Start pulser
+  nohup "$WT_HOME/bin/pulser" > /dev/null 2>&1 &
+  echo $! > /tmp/claude-wt-pulser.pid
+
+  echo ""
+  echo -e "${GREEN}Pronto!${NC} Ctrl+a n/p para navegar, Ctrl+a d para sair"
+  echo ""
+
+  sleep 1
+  exec screen -r "$SESSION_NAME"
+}
+
+# =============================================================================
 # Main
 # =============================================================================
 
@@ -342,15 +442,13 @@ case "${1:-}" in
     ;;
   --quick|-q)
     shift
-    # Quick mode implementation TODO
-    echo "Quick mode not yet implemented"
-    exit 1
+    quick_mode "$@"
     ;;
   "")
     interactive_mode
     ;;
   *)
-    # Direct type/name argument
-    interactive_mode
+    # Direct arguments = quick mode with workers
+    quick_mode "$@"
     ;;
 esac
