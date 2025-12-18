@@ -73,11 +73,11 @@ prompt() {
   local result
 
   if [[ -n "$default" ]]; then
-    echo -en "${YELLOW}$question ${NC}[$default]: "
+    printf "${YELLOW}%s ${NC}[%s]: " "$question" "$default"
   else
-    echo -en "${YELLOW}$question: ${NC}"
+    printf "${YELLOW}%s: ${NC}" "$question"
   fi
-  read -r result
+  read -r result </dev/tty
   echo "${result:-$default}"
 }
 
@@ -90,8 +90,8 @@ prompt_select() {
   for i in "${!options[@]}"; do
     echo "  $((i+1))) ${options[$i]}"
   done
-  echo -en "Escolha [1]: "
-  read -r choice
+  printf "Escolha [1]: "
+  read -r choice </dev/tty
   choice=${choice:-1}
   echo "${options[$((choice-1))]}"
 }
@@ -283,7 +283,7 @@ interactive_mode() {
   echo "  3) front, back, data"
   echo "  4) custom"
   echo -en "Escolha [1]: "
-  read -r tpl_choice
+  read -r tpl_choice </dev/tty
   tpl_choice=${tpl_choice:-1}
 
   local workers
@@ -300,7 +300,7 @@ interactive_mode() {
   # 5. QA
   local include_qa="true"
   echo -en "${YELLOW}Incluir QA? ${NC}[S/n]: "
-  read -r qa_choice
+  read -r qa_choice </dev/tty
   [[ "$qa_choice" =~ ^[Nn] ]] && include_qa="false"
 
   # Summary
@@ -314,7 +314,7 @@ interactive_mode() {
   echo -e "${CYAN}═══════════════════════════════════════${NC}"
   echo ""
   echo -en "${YELLOW}Confirmar? ${NC}[S/n]: "
-  read -r confirm
+  read -r confirm </dev/tty
   [[ "$confirm" =~ ^[Nn] ]] && exit 0
 
   create_wt_session "$base_branch" "$type_name" "$include_qa" "${workers[@]}"
