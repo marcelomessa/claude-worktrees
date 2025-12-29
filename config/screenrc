@@ -62,5 +62,5 @@ autodetach on
 # No flow control
 defflow off
 
-# 256 colors
-term screen-256color
+# Disable colors (force monochrome for Claude)
+term vt100

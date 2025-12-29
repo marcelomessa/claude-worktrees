@@ -1,13 +1,13 @@
 #!/bin/bash
 # =============================================================================
-# CLAUDE WT - Multi-Agent Development Environment
+# CWT - Claude Worktrees Multi-Agent Environment
 # =============================================================================
-# Creates a screen session with coordinated Claude agents working on
-# feature branches using git worktrees.
+# Screen session with coordinator + workers for parallel development.
+# User interacts with coordinator, views workers, messaging via wt-task/wt-msg.
 #
 # Usage:
-#   cwt                     # Interactive mode
-#   cwt --quick feat/xxx    # Quick mode with defaults
+#   cwt front back sec      # Start with 3 workers
+#   cwt --continue front    # Resume previous Claude sessions
 #   cwt --help              # Show help
 # =============================================================================
 
@@ -16,404 +16,153 @@ set -e
 WT_HOME="${WT_HOME:-$(dirname "$(dirname "$(realpath "$0")")")}"
 SESSION_NAME="claude-wt"
 SCREENRC="$WT_HOME/config/screenrc"
-PULSER_INTERVAL=${PULSER_INTERVAL:-30}
 
-# Colors (text only, no background)
-RED='\033[31m'
-GREEN='\033[32m'
-YELLOW='\033[33m'
-BLUE='\033[34m'
-CYAN='\033[36m'
-BOLD='\033[1m'
-NC='\033[0m'
 
 # =============================================================================
-# Helper Functions
+# Help
 # =============================================================================
-
-print_header() {
-  echo ""
-  echo -e "${CYAN}════════════════════════════════════════════════════════${NC}"
-  echo -e "${CYAN}         CLAUDE WORKTREES - Multi-Agent Environment${NC}"
-  echo -e "${CYAN}════════════════════════════════════════════════════════${NC}"
-  echo ""
-}
 
 print_help() {
-  print_header
-  echo "Usage: cwt [OPTIONS] [TYPE/NAME]"
-  echo ""
-  echo "Options:"
-  echo "  --help, -h       Show this help"
-  echo "  --quick, -q      Quick mode (skip prompts, use defaults)"
-  echo "  --base BRANCH    Base branch (default: current or main)"
-  echo "  --workers N      Number of workers (default: 3)"
-  echo "  --template TPL   Worker template: wt|front-back-sec|custom"
-  echo "  --no-qa          Don't include QA window"
-  echo "  --list           List active wt sessions"
-  echo "  --kill           Kill current wt session"
-  echo ""
-  echo "Examples:"
-  echo "  cwt                          # Interactive mode"
-  echo "  cwt feat/new-dashboard       # Quick start feature"
-  echo "  cwt --base dev feat/api      # Feature from dev branch"
-  echo "  cwt --template front,back,sec feat/ui"
-  echo ""
-  echo "Conventional types:"
-  echo "  feat/     New feature"
-  echo "  fix/      Bug fix"
-  echo "  hot/      Hotfix"
-  echo "  refactor/ Refactoring"
-  echo "  docs/     Documentation"
-  echo "  test/     Tests"
-  echo "  chore/    Maintenance"
+  cat << 'EOF'
+CWT - Claude Worktrees
+
+Usage: cwt [OPTIONS] <worker1> [worker2] ...
+
+Start a screen session with coordinator + workers.
+Coordinator in window 0, workers in subsequent windows.
+
+Options:
+  --help, -h       Show this help
+  --continue, -c   Resume previous Claude sessions (--continue flag)
+  --base, -b       Base branch for worktrees
+  --list           List active sessions
+  --kill           Kill current session
+
+Examples:
+  cwt front back sec           # 3 workers
+  cwt --continue front back    # Resume sessions
+  cwt -b dev front back        # Workers from dev branch
+
+Worktree detection:
+  Looks for: workspace-{worker}, worktree-{worker}, or {worker}
+
+Screen shortcuts:
+  Ctrl+a n       Next window
+  Ctrl+a p       Previous window
+  Ctrl+a 0-9     Go to window
+  Ctrl+a d       Detach (keep running)
+
+Messaging:
+  wt-task front "Do X"   # Send task to worker
+  wt-msg send front "Y"  # Send message
+  wt-msg check           # Check messages
+EOF
 }
 
-prompt() {
-  local question="$1"
-  local default="$2"
-  local result
-
-  if [[ -n "$default" ]]; then
-    printf "${YELLOW}%s ${NC}[%s]: " "$question" "$default" >/dev/tty
-  else
-    printf "${YELLOW}%s: ${NC}" "$question" >/dev/tty
-  fi
-  read -r result </dev/tty
-  echo "${result:-$default}"
-}
-
-prompt_select() {
-  local question="$1"
-  shift
-  local options=("$@")
-
-  echo -e "${YELLOW}$question${NC}" >/dev/tty
-  for i in "${!options[@]}"; do
-    echo "  $((i+1))) ${options[$i]}" >/dev/tty
-  done
-  printf "Escolha [1]: " >/dev/tty
-  read -r choice </dev/tty
-  choice=${choice:-1}
-  echo "${options[$((choice-1))]}"
-}
-
-check_git_repo() {
-  if ! git rev-parse --is-inside-work-tree &>/dev/null; then
-    echo -e "${RED}Erro: Não está em um repositório git${NC}"
-    echo "Execute cwt de dentro de um repositório git."
-    exit 1
-  fi
-}
+# =============================================================================
+# Session Management
+# =============================================================================
 
 check_existing_session() {
-  if screen -list | grep -q "$SESSION_NAME"; then
-    echo -e "${YELLOW}Sessão '$SESSION_NAME' já existe. Reconectando...${NC}"
+  if screen -list 2>/dev/null | grep -q "$SESSION_NAME"; then
+    echo "Session '$SESSION_NAME' exists. Reconnecting..."
     exec screen -r "$SESSION_NAME"
   fi
 }
 
-# =============================================================================
-# Worktree Management
-# =============================================================================
-
-create_worktree() {
-  local branch="$1"
-  local base="$2"
-  local worktree_path="../worktree-${branch//\//-}"
-
-  # Check if branch exists
-  if git show-ref --verify --quiet "refs/heads/$branch"; then
-    echo -e "  ${BLUE}Branch existe:${NC} $branch"
-  else
-    echo -e "  ${GREEN}Criando branch:${NC} $branch from $base"
-    git branch "$branch" "$base"
-  fi
-
-  # Check if worktree exists
-  if [[ -d "$worktree_path" ]]; then
-    echo -e "  ${BLUE}Worktree existe:${NC} $worktree_path"
-  else
-    echo -e "  ${GREEN}Criando worktree:${NC} $worktree_path"
-    git worktree add "$worktree_path" "$branch"
-  fi
-
-  echo "$worktree_path"
-}
-
-# =============================================================================
-# Screen Session Management
-# =============================================================================
-
-create_wt_session() {
-  local base_branch="$1"
-  local type_name="$2"
-  local include_qa="$3"
-  shift 3
-  local workers=("$@")
-
-  local repo_root=$(git rev-parse --show-toplevel)
-  local repo_name=$(basename "$repo_root")
-
-  echo ""
-  echo -e "${CYAN}Criando sessão wt...${NC}"
-
-  # Save config for pulser
-  local config_file="/tmp/claude-wt-config.json"
-  cat > "$config_file" << EOF
-{
-  "repo": "$repo_root",
-  "base": "$base_branch",
-  "type": "$type_name",
-  "workers": [$(printf '"%s",' "${workers[@]}" | sed 's/,$//')]
-}
-EOF
-
-  # Create screen session
-  screen -c "$SCREENRC" -dmS "$SESSION_NAME"
-  sleep 0.5
-
-  # Window 0: Coordinator
-  echo -e "  ${GREEN}[0] coord${NC} → $base_branch (merge + deploy)"
-  screen -S "$SESSION_NAME" -X title "coord"
-  screen -S "$SESSION_NAME" -p 0 -X stuff "export CLAUDE_WORKER_ID='coord'"$'\n'
-  sleep 0.1
-  screen -S "$SESSION_NAME" -p 0 -X stuff "cd '$repo_root'"$'\n'
-  sleep 0.1
-  screen -S "$SESSION_NAME" -p 0 -X stuff "git checkout '$base_branch' 2>/dev/null || true"$'\n'
-  sleep 0.1
-  screen -S "$SESSION_NAME" -p 0 -X stuff "echo '🎯 COORD - $repo_name @ $base_branch'"$'\n'
-  screen -S "$SESSION_NAME" -p 0 -X stuff "claude"$'\n'
-
-  local window_num=1
-
-  # QA Window (optional)
-  if [[ "$include_qa" == "true" ]]; then
-    echo -e "  ${GREEN}[$window_num] qa${NC} → $base_branch (review + test)"
-    screen -S "$SESSION_NAME" -X screen -t "qa"
-    sleep 0.3
-    screen -S "$SESSION_NAME" -p "$window_num" -X stuff "export CLAUDE_WORKER_ID='qa'"$'\n'
-    sleep 0.1
-    screen -S "$SESSION_NAME" -p "$window_num" -X stuff "cd '$repo_root'"$'\n'
-    sleep 0.1
-    screen -S "$SESSION_NAME" -p "$window_num" -X stuff "echo '🔍 QA - Review & Test'"$'\n'
-    screen -S "$SESSION_NAME" -p "$window_num" -X stuff "claude"$'\n'
-    ((window_num++))
-  fi
-
-  # Worker Windows
-  for worker in "${workers[@]}"; do
-    local branch="${type_name}-${worker}"
-    local worktree_path=$(create_worktree "$branch" "$base_branch")
-    local full_path="$repo_root/$worktree_path"
-
-    echo -e "  ${GREEN}[$window_num] $worker${NC} → $branch"
-
-    screen -S "$SESSION_NAME" -X screen -t "$worker"
-    sleep 0.3
-    screen -S "$SESSION_NAME" -p "$window_num" -X stuff "export CLAUDE_WORKER_ID='$worker'"$'\n'
-    sleep 0.1
-    screen -S "$SESSION_NAME" -p "$window_num" -X stuff "cd '$full_path'"$'\n'
-    sleep 0.1
-    screen -S "$SESSION_NAME" -p "$window_num" -X stuff "echo '🔧 $worker - $branch'"$'\n'
-    screen -S "$SESSION_NAME" -p "$window_num" -X stuff "claude"$'\n'
-
-    ((window_num++))
-  done
-
-  # Monitor Window
-  echo -e "  ${GREEN}[$window_num] monitor${NC} → logs"
-  screen -S "$SESSION_NAME" -X screen -t "monitor"
-  sleep 0.3
-  screen -S "$SESSION_NAME" -p "$window_num" -X stuff "tail -f /tmp/claude-wt.log 2>/dev/null || echo 'Aguardando logs...'"$'\n'
-
-  # Start pulser
-  echo ""
-  echo -e "${CYAN}Iniciando pulser...${NC}"
-  nohup "$WT_HOME/bin/pulser" > /dev/null 2>&1 &
-  echo $! > /tmp/claude-wt-pulser.pid
-
-  echo ""
-  echo -e "${GREEN}✅ Worktrees criado!${NC}"
-  echo ""
-  echo "Atalhos screen:"
-  echo "  Ctrl+a n     Próxima window"
-  echo "  Ctrl+a p     Anterior"
-  echo "  Ctrl+a 0-9   Ir para window"
-  echo "  Ctrl+a d     Desconectar"
-  echo ""
-
-  sleep 1
-  exec screen -r "$SESSION_NAME"
-}
-
-# =============================================================================
-# Interactive Mode
-# =============================================================================
-
-interactive_mode() {
-  print_header
-  check_git_repo
-  check_existing_session
-
-  local repo_root=$(git rev-parse --show-toplevel)
-  local current_branch=$(git branch --show-current)
-  local repo_name=$(basename "$repo_root")
-
-  echo -e "Repositório: ${GREEN}$repo_name${NC}"
-  echo -e "Branch atual: ${GREEN}$current_branch${NC}"
-  echo ""
-
-  # 1. Base branch
-  local base_branch=$(prompt "Branch base para integração" "$current_branch")
-
-  # 2. Type
-  local type_options=("feat" "fix" "refactor" "hot" "docs" "test" "chore")
-  local type=$(prompt_select "Tipo de trabalho?" "${type_options[@]}")
-
-  # 3. Feature name
-  local feature_name=$(prompt "Nome da feature/escopo")
-  local type_name="${type}/${feature_name}"
-
-  # 4. Workers
-  echo ""
-  echo -e "${YELLOW}Template de workers:${NC}"
-  echo "  1) wt1, wt2, wt3 (genérico)"
-  echo "  2) front, back, sec"
-  echo "  3) front, back, data"
-  echo "  4) custom"
-  echo -en "Escolha [1]: "
-  read -r tpl_choice </dev/tty
-  tpl_choice=${tpl_choice:-1}
-
-  local workers
-  case $tpl_choice in
-    1) workers=("wt1" "wt2" "wt3") ;;
-    2) workers=("front" "back" "sec") ;;
-    3) workers=("front" "back" "data") ;;
-    4)
-      local custom=$(prompt "Workers (separados por vírgula)" "wt1,wt2")
-      IFS=',' read -ra workers <<< "$custom"
-      ;;
-  esac
-
-  # 5. QA
-  local include_qa="true"
-  echo -en "${YELLOW}Incluir QA? ${NC}[S/n]: "
-  read -r qa_choice </dev/tty
-  [[ "$qa_choice" =~ ^[Nn] ]] && include_qa="false"
-
-  # Summary
-  echo ""
-  echo -e "${CYAN}═══════════════════════════════════════${NC}"
-  echo -e "${CYAN}Resumo:${NC}"
-  echo -e "  Base:    $base_branch"
-  echo -e "  Tipo:    $type_name"
-  echo -e "  Workers: ${workers[*]}"
-  echo -e "  QA:      $include_qa"
-  echo -e "${CYAN}═══════════════════════════════════════${NC}"
-  echo ""
-  echo -en "${YELLOW}Confirmar? ${NC}[S/n]: "
-  read -r confirm </dev/tty
-  [[ "$confirm" =~ ^[Nn] ]] && exit 0
-
-  create_wt_session "$base_branch" "$type_name" "$include_qa" "${workers[@]}"
-}
-
-# =============================================================================
-# Quick Mode - Use existing worktrees
-# =============================================================================
-
-quick_mode() {
+start_session() {
   local workers=("$@")
 
   if [[ ${#workers[@]} -eq 0 ]]; then
-    echo -e "${RED}Uso: cwt <worker1> <worker2> ...${NC}" >/dev/tty
-    echo "Exemplo: cwt security-features ui-performance" >/dev/tty
+    echo "Usage: cwt <worker1> [worker2] ..."
+    echo "Example: cwt front back sec"
+    echo "Run 'cwt --help' for more options."
     exit 1
   fi
 
-  print_header
   check_existing_session
 
   local repo_root=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
   local repo_name=$(basename "$repo_root")
   local base_branch="${BASE_BRANCH:-$(git branch --show-current 2>/dev/null || echo 'main')}"
 
-  echo -e "Repositório: ${GREEN}$repo_name${NC}"
-  echo -e "Workers: ${GREEN}${workers[*]}${NC}"
+  echo "Starting cwt session..."
+  echo "  Repo: $repo_name"
+  echo "  Base: $base_branch"
+  echo "  Workers: ${workers[*]}"
   echo ""
 
-  # Save config for pulser
-  local config_file="/tmp/claude-wt-config.json"
-  cat > "$config_file" << EOF
-{
-  "repo": "$repo_root",
-  "base": "$base_branch",
-  "workers": [$(printf '"%s",' "${workers[@]}" | sed 's/,$//')]
-}
+  # Config for other tools
+  cat > /tmp/claude-wt-config.json << EOF
+{"repo":"$repo_root","base":"$base_branch","workers":[$(printf '"%s",' "${workers[@]}" | sed 's/,$//')],"started":"$(date -u +%Y-%m-%dT%H:%M:%SZ)"}
 EOF
 
   # Create screen session
-  echo -e "${CYAN}Criando sessão...${NC}"
   screen -c "$SCREENRC" -dmS "$SESSION_NAME"
   sleep 0.5
 
   # Window 0: Coordinator
-  echo -e "  ${GREEN}[0] coord${NC} → $base_branch"
+  echo "  [0] coord -> $base_branch"
   screen -S "$SESSION_NAME" -X title "coord"
   screen -S "$SESSION_NAME" -p 0 -X stuff "export CLAUDE_WORKER_ID='coord'"$'\n'
   sleep 0.1
+  screen -S "$SESSION_NAME" -p 0 -X stuff "export TERM=vt100 NO_COLOR=1"$'\n'
+  sleep 0.1
   screen -S "$SESSION_NAME" -p 0 -X stuff "cd '$repo_root'"$'\n'
   sleep 0.1
-  screen -S "$SESSION_NAME" -p 0 -X stuff "claude $CONTINUE_SESSION"$'\n'
+  screen -S "$SESSION_NAME" -p 0 -X stuff "claude $CONTINUE_FLAG"$'\n'
 
   local window_num=1
 
   # Worker Windows
   for worker in "${workers[@]}"; do
-    # Try to find worktree: workspace-X, worktree-X, or X
     local worktree_path=""
+
+    # Find worktree
     for pattern in "workspace-$worker" "worktree-$worker" "$worker"; do
       if [[ -d "$repo_root/../$pattern" ]]; then
-        worktree_path="$repo_root/../$pattern"
+        worktree_path="$(cd "$repo_root/../$pattern" && pwd)"
         break
       elif [[ -d "$repo_root/$pattern" ]]; then
-        worktree_path="$repo_root/$pattern"
+        worktree_path="$(cd "$repo_root/$pattern" && pwd)"
         break
       fi
     done
 
     if [[ -z "$worktree_path" ]]; then
-      echo -e "  ${YELLOW}[$window_num] $worker${NC} → (diretório não encontrado, usando repo)"
+      echo "  [$window_num] $worker -> (no worktree, using repo)"
       worktree_path="$repo_root"
     else
-      echo -e "  ${GREEN}[$window_num] $worker${NC} → $worktree_path"
+      echo "  [$window_num] $worker -> $(basename "$worktree_path")"
     fi
 
     screen -S "$SESSION_NAME" -X screen -t "$worker"
     sleep 0.3
     screen -S "$SESSION_NAME" -p "$window_num" -X stuff "export CLAUDE_WORKER_ID='$worker'"$'\n'
     sleep 0.1
+    screen -S "$SESSION_NAME" -p "$window_num" -X stuff "export TERM=vt100 NO_COLOR=1"$'\n'
+    sleep 0.1
     screen -S "$SESSION_NAME" -p "$window_num" -X stuff "cd '$worktree_path'"$'\n'
     sleep 0.1
-    screen -S "$SESSION_NAME" -p "$window_num" -X stuff "claude $CONTINUE_SESSION"$'\n'
+    screen -S "$SESSION_NAME" -p "$window_num" -X stuff "claude $CONTINUE_FLAG"$'\n'
 
     ((window_num++))
   done
 
   # Monitor Window
-  echo -e "  ${GREEN}[$window_num] monitor${NC} → logs"
+  echo "  [$window_num] monitor -> logs"
   screen -S "$SESSION_NAME" -X screen -t "monitor"
   sleep 0.3
-  screen -S "$SESSION_NAME" -p "$window_num" -X stuff "tail -f /tmp/claude-wt.log 2>/dev/null || echo 'Aguardando logs...'"$'\n'
+  screen -S "$SESSION_NAME" -p "$window_num" -X stuff "tail -f /tmp/claude-wt.log 2>/dev/null || echo 'Waiting for logs...'"$'\n'
 
-  # Start pulser
-  nohup "$WT_HOME/bin/pulser" > /dev/null 2>&1 &
-  echo $! > /tmp/claude-wt-pulser.pid
+  # Start pulser if available
+  if [[ -x "$WT_HOME/bin/pulser" ]]; then
+    nohup "$WT_HOME/bin/pulser" > /dev/null 2>&1 &
+    echo $! > /tmp/claude-wt-pulser.pid
+  fi
 
   echo ""
-  echo -e "${GREEN}Pronto!${NC} Ctrl+a n/p para navegar, Ctrl+a d para sair"
+  echo "Ready! Ctrl+a n/p to navigate, Ctrl+a d to detach"
   echo ""
 
   sleep 1
@@ -424,9 +173,8 @@ EOF
 # Main
 # =============================================================================
 
-# Parse arguments
 BASE_BRANCH=""
-CONTINUE_SESSION=""
+CONTINUE_FLAG=""
 WORKERS=()
 
 while [[ $# -gt 0 ]]; do
@@ -435,15 +183,15 @@ while [[ $# -gt 0 ]]; do
       print_help
       exit 0
       ;;
-    --list)
-      screen -list | grep claude-wt || echo "Nenhuma sessão ativa"
+    --list|-l)
+      screen -list 2>/dev/null | grep claude-wt || echo "No active sessions"
       exit 0
       ;;
-    --kill)
+    --kill|-k)
       pkill -f "pulser" 2>/dev/null || true
       screen -X -S "$SESSION_NAME" quit 2>/dev/null || true
       rm -f /tmp/claude-wt-*.pid /tmp/claude-wt-*.json /tmp/claude-wt.log
-      echo "Worktrees encerrado"
+      echo "Session terminated"
       exit 0
       ;;
     --base|-b)
@@ -451,14 +199,12 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     --continue|-c)
-      CONTINUE_SESSION="--continue"
-      shift
-      ;;
-    --quick|-q)
+      CONTINUE_FLAG="--continue"
       shift
       ;;
     -*)
-      echo "Opção desconhecida: $1"
+      echo "Unknown option: $1"
+      echo "Run 'cwt --help' for usage"
       exit 1
       ;;
     *)
@@ -468,9 +214,4 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# Decide mode
-if [[ ${#WORKERS[@]} -gt 0 ]]; then
-  quick_mode "${WORKERS[@]}"
-else
-  interactive_mode
-fi
+start_session "${WORKERS[@]}"
