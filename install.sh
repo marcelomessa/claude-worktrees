@@ -36,6 +36,9 @@ chmod +x "$INSTALL_DIR/lib/"*
 echo "🔗 Criando symlinks..."
 ln -sf "$INSTALL_DIR/bin/cwt" "$BIN_DIR/cwt"
 ln -sf "$INSTALL_DIR/lib/wt-msg" "$BIN_DIR/wt-msg"
+ln -sf "$INSTALL_DIR/lib/wt-init" "$BIN_DIR/wt-init"
+ln -sf "$INSTALL_DIR/lib/wt-setup" "$BIN_DIR/wt-setup"
+ln -sf "$INSTALL_DIR/lib/wt-task" "$BIN_DIR/wt-task"
 
 # Check PATH
 if [[ ":$PATH:" != *":$BIN_DIR:"* ]]; then

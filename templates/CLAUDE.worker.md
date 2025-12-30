@@ -1,6 +1,7 @@
-# Worker Agent Guidelines
+# Worker: WORKER_ID
 
 You are a **worker (core)** in a multi-agent development environment.
+Your ID is `WORKER_ID` - use this in communications.
 
 ## Architecture: You Are a Core
 

@@ -1,0 +1,157 @@
+#!/bin/bash
+# =============================================================================
+# WT-INIT - Initialize worktrees for multi-agent Claude environment
+# =============================================================================
+# Creates git worktrees with branches and sets up CLAUDE.md templates
+#
+# Usage:
+#   wt-init front back sec       # Create 3 worktrees
+#   wt-init --base dev front     # Use dev as base branch
+#   wt-init --prefix feature     # Use feature/ prefix (default)
+# =============================================================================
+
+set -e
+
+WT_HOME="${WT_HOME:-$(dirname "$(dirname "$(realpath "$0")")")}"
+TEMPLATES_DIR="$WT_HOME/templates"
+
+show_help() {
+  cat << 'EOF'
+WT-INIT - Initialize worktrees for multi-agent development
+
+Usage: wt-init [OPTIONS] <worker1> [worker2] ...
+
+Options:
+  --help, -h        Show this help
+  --base, -b BRANCH Base branch for worktrees (default: current branch)
+  --prefix, -p PRE  Branch prefix (default: feature)
+  --dry-run         Show what would be done without doing it
+
+Examples:
+  wt-init front back sec           # Create 3 worktrees
+  wt-init -b main ui api           # Base on main
+  wt-init -p fix bug1 bug2         # Use fix/ prefix
+
+Creates:
+  - ../workspace-{name}/ directories
+  - feature/{name} branches (or custom prefix)
+  - .claude/CLAUDE.md in each worktree
+EOF
+}
+
+# Defaults
+BASE_BRANCH=""
+PREFIX="feature"
+DRY_RUN=false
+WORKERS=()
+
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --help|-h)
+      show_help
+      exit 0
+      ;;
+    --base|-b)
+      BASE_BRANCH="$2"
+      shift 2
+      ;;
+    --prefix|-p)
+      PREFIX="$2"
+      shift 2
+      ;;
+    --dry-run)
+      DRY_RUN=true
+      shift
+      ;;
+    -*)
+      echo "Unknown option: $1"
+      exit 1
+      ;;
+    *)
+      WORKERS+=("$1")
+      shift
+      ;;
+  esac
+done
+
+if [[ ${#WORKERS[@]} -eq 0 ]]; then
+  show_help
+  exit 1
+fi
+
+# Get repo info
+REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
+if [[ -z "$REPO_ROOT" ]]; then
+  echo "Error: Not in a git repository"
+  exit 1
+fi
+
+PARENT_DIR=$(dirname "$REPO_ROOT")
+CURRENT_BRANCH=$(git branch --show-current)
+BASE_BRANCH="${BASE_BRANCH:-$CURRENT_BRANCH}"
+
+echo "╔═══════════════════════════════════════════════════════════════╗"
+echo "║         WT-INIT - Create Multi-Agent Worktrees                ║"
+echo "╚═══════════════════════════════════════════════════════════════╝"
+echo ""
+echo "  Repository: $(basename "$REPO_ROOT")"
+echo "  Base branch: $BASE_BRANCH"
+echo "  Prefix: $PREFIX/"
+echo "  Workers: ${WORKERS[*]}"
+echo ""
+
+if [[ "$DRY_RUN" == "true" ]]; then
+  echo "[DRY RUN] Would create:"
+fi
+
+for worker in "${WORKERS[@]}"; do
+  BRANCH_NAME="$PREFIX/$worker"
+  WORKTREE_PATH="$PARENT_DIR/workspace-$worker"
+
+  echo "─────────────────────────────────────────────────────────────────"
+  echo "  Worker: $worker"
+  echo "  Branch: $BRANCH_NAME"
+  echo "  Path:   $WORKTREE_PATH"
+
+  if [[ "$DRY_RUN" == "true" ]]; then
+    continue
+  fi
+
+  # Check if worktree already exists
+  if [[ -d "$WORKTREE_PATH" ]]; then
+    echo "  ⚠️  Worktree already exists, skipping"
+    continue
+  fi
+
+  # Check if branch exists
+  if git show-ref --verify --quiet "refs/heads/$BRANCH_NAME"; then
+    echo "  Branch exists, creating worktree..."
+    git worktree add "$WORKTREE_PATH" "$BRANCH_NAME"
+  else
+    echo "  Creating branch and worktree..."
+    git worktree add -b "$BRANCH_NAME" "$WORKTREE_PATH" "$BASE_BRANCH"
+  fi
+
+  # Setup CLAUDE.md
+  CLAUDE_DIR="$WORKTREE_PATH/.claude"
+  mkdir -p "$CLAUDE_DIR"
+
+  if [[ -f "$TEMPLATES_DIR/CLAUDE.worker.md" ]]; then
+    sed "s/WORKER_ID/$worker/g" "$TEMPLATES_DIR/CLAUDE.worker.md" > "$CLAUDE_DIR/CLAUDE.md"
+    echo "  ✓ CLAUDE.md created"
+  fi
+
+  echo "  ✅ Done"
+done
+
+echo ""
+echo "═══════════════════════════════════════════════════════════════"
+
+# Show worktree list
+echo ""
+echo "Current worktrees:"
+git worktree list
+
+echo ""
+echo "Start with: cwt ${WORKERS[*]}"
