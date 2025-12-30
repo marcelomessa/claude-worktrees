@@ -12,11 +12,12 @@
 STATE_FILE="/tmp/claude-wt-state.json"
 WORKER_ID="${CLAUDE_WORKER_ID:-$(basename "$PWD")}"
 
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-RED='\033[0;31m'
-NC='\033[0m'
+# No colors - cleaner terminal
+GREEN=''
+YELLOW=''
+BLUE=''
+RED=''
+NC=''
 
 # Initialize state file if needed
 init_state() {

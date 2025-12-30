@@ -16,9 +16,10 @@ defutf8 on
 vbell on
 vbell_msg "  !! Bell !!  "
 
-# Status bar at bottom (text colors only, no background)
-hardstatus alwayslastline
-hardstatus string '%-w[%n %t]%+w %= %H %c'
+# Status bar disabled - testing if this fixes color contamination
+# hardstatus alwayslastline
+# hardstatus string '%-w[%n %t]%+w %= %H %c'
+hardstatus off
 
 # Window title format
 shelltitle "$ |bash"
@@ -62,5 +63,5 @@ autodetach on
 # No flow control
 defflow off
 
-# Disable colors (force monochrome for Claude)
-term vt100
+# 256 colors - testing without status bar
+term screen-256color

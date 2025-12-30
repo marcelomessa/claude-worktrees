@@ -1,210 +1,91 @@
 #!/bin/bash
 # =============================================================================
-# CWT - Claude Worktrees Multi-Agent Environment
+# CWT - Claude WorkTrees (tmux version)
 # =============================================================================
-# Screen session with coordinator + workers for parallel development.
-# User interacts with coordinator, views workers, messaging via wt-task/wt-msg.
-#
-# Usage:
-#   cwt front back sec      # Start with 3 workers
-#   cwt --continue front    # Resume previous Claude sessions
-#   cwt --help              # Show help
+# Uso:
+#   cwt front back sec           # Inicia com workers
+#   cwt -c front back            # Resume sessões (--continue)
+#   cwt --list                   # Lista sessões
+#   cwt --kill                   # Encerra sessão
 # =============================================================================
 
-set -e
-
-WT_HOME="${WT_HOME:-$(dirname "$(dirname "$(realpath "$0")")")}"
-SESSION_NAME="claude-wt"
-SCREENRC="$WT_HOME/config/screenrc"
-
-
-# =============================================================================
-# Help
-# =============================================================================
+CWT_DIR="$(cd "$(dirname "$0")" && pwd)"
+SESSION_NAME="cwt"
 
 print_help() {
   cat << 'EOF'
-CWT - Claude Worktrees
+CWT - Claude WorkTrees (tmux)
 
-Usage: cwt [OPTIONS] <worker1> [worker2] ...
+Uso: cwt [OPÇÕES] [worker1] [worker2] ...
 
-Start a screen session with coordinator + workers.
-Coordinator in window 0, workers in subsequent windows.
+Inicia sessão tmux com coordinator + workers.
+Coordinator na window 0, workers nas seguintes.
 
-Options:
-  --help, -h       Show this help
-  --continue, -c   Resume previous Claude sessions (--continue flag)
-  --base, -b       Base branch for worktrees
-  --list           List active sessions
-  --kill           Kill current session
+Opções:
+  -h, --help       Mostra esta ajuda
+  -c, --continue   Resume sessões Claude anteriores
+  -b, --base       Branch base do coordenador (para merges)
+  -l, --list       Lista sessões ativas
+  -k, --kill       Encerra sessão
+  -s, --status     Mostra status dos workers
 
-Examples:
+Exemplos:
   cwt front back sec           # 3 workers
-  cwt --continue front back    # Resume sessions
-  cwt -b dev front back        # Workers from dev branch
+  cwt -c front back            # Resume sessões
+  cwt                          # Detecta worktrees automaticamente
 
-Worktree detection:
-  Looks for: workspace-{worker}, worktree-{worker}, or {worker}
-
-Screen shortcuts:
-  Ctrl+a n       Next window
-  Ctrl+a p       Previous window
-  Ctrl+a 0-9     Go to window
-  Ctrl+a d       Detach (keep running)
-
-Messaging:
-  wt-task front "Do X"   # Send task to worker
-  wt-msg send front "Y"  # Send message
-  wt-msg check           # Check messages
+Atalhos tmux:
+  Ctrl+b n       Próxima window
+  Ctrl+b p       Window anterior
+  Ctrl+b 0-9     Ir para window N
+  Ctrl+b d       Desconectar (continua rodando)
 EOF
 }
 
-# =============================================================================
-# Session Management
-# =============================================================================
-
-check_existing_session() {
-  if screen -list 2>/dev/null | grep -q "$SESSION_NAME"; then
-    echo "Session '$SESSION_NAME' exists. Reconnecting..."
-    exec screen -r "$SESSION_NAME"
-  fi
-}
-
-start_session() {
-  local workers=("$@")
-
-  if [[ ${#workers[@]} -eq 0 ]]; then
-    echo "Usage: cwt <worker1> [worker2] ..."
-    echo "Example: cwt front back sec"
-    echo "Run 'cwt --help' for more options."
-    exit 1
-  fi
-
-  check_existing_session
-
-  local repo_root=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-  local repo_name=$(basename "$repo_root")
-  local base_branch="${BASE_BRANCH:-$(git branch --show-current 2>/dev/null || echo 'main')}"
-
-  echo "Starting cwt session..."
-  echo "  Repo: $repo_name"
-  echo "  Base: $base_branch"
-  echo "  Workers: ${workers[*]}"
-  echo ""
-
-  # Config for other tools
-  cat > /tmp/claude-wt-config.json << EOF
-{"repo":"$repo_root","base":"$base_branch","workers":[$(printf '"%s",' "${workers[@]}" | sed 's/,$//')],"started":"$(date -u +%Y-%m-%dT%H:%M:%SZ)"}
-EOF
-
-  # Create screen session
-  screen -c "$SCREENRC" -dmS "$SESSION_NAME"
-  sleep 0.5
-
-  # Window 0: Coordinator
-  echo "  [0] coord -> $base_branch"
-  screen -S "$SESSION_NAME" -X title "coord"
-  screen -S "$SESSION_NAME" -p 0 -X stuff "export CLAUDE_WORKER_ID='coord'"$'\n'
-  sleep 0.1
-  screen -S "$SESSION_NAME" -p 0 -X stuff "export TERM=vt100 NO_COLOR=1"$'\n'
-  sleep 0.1
-  screen -S "$SESSION_NAME" -p 0 -X stuff "cd '$repo_root'"$'\n'
-  sleep 0.1
-  screen -S "$SESSION_NAME" -p 0 -X stuff "claude $CONTINUE_FLAG"$'\n'
-
-  local window_num=1
-
-  # Worker Windows
-  for worker in "${workers[@]}"; do
-    local worktree_path=""
-
-    # Find worktree
-    for pattern in "workspace-$worker" "worktree-$worker" "$worker"; do
-      if [[ -d "$repo_root/../$pattern" ]]; then
-        worktree_path="$(cd "$repo_root/../$pattern" && pwd)"
-        break
-      elif [[ -d "$repo_root/$pattern" ]]; then
-        worktree_path="$(cd "$repo_root/$pattern" && pwd)"
-        break
-      fi
-    done
-
-    if [[ -z "$worktree_path" ]]; then
-      echo "  [$window_num] $worker -> (no worktree, using repo)"
-      worktree_path="$repo_root"
-    else
-      echo "  [$window_num] $worker -> $(basename "$worktree_path")"
-    fi
-
-    screen -S "$SESSION_NAME" -X screen -t "$worker"
-    sleep 0.3
-    screen -S "$SESSION_NAME" -p "$window_num" -X stuff "export CLAUDE_WORKER_ID='$worker'"$'\n'
-    sleep 0.1
-    screen -S "$SESSION_NAME" -p "$window_num" -X stuff "export TERM=vt100 NO_COLOR=1"$'\n'
-    sleep 0.1
-    screen -S "$SESSION_NAME" -p "$window_num" -X stuff "cd '$worktree_path'"$'\n'
-    sleep 0.1
-    screen -S "$SESSION_NAME" -p "$window_num" -X stuff "claude $CONTINUE_FLAG"$'\n'
-
-    ((window_num++))
-  done
-
-  # Monitor Window
-  echo "  [$window_num] monitor -> logs"
-  screen -S "$SESSION_NAME" -X screen -t "monitor"
-  sleep 0.3
-  screen -S "$SESSION_NAME" -p "$window_num" -X stuff "tail -f /tmp/claude-wt.log 2>/dev/null || echo 'Waiting for logs...'"$'\n'
-
-  # Start pulser if available
-  if [[ -x "$WT_HOME/bin/pulser" ]]; then
-    nohup "$WT_HOME/bin/pulser" > /dev/null 2>&1 &
-    echo $! > /tmp/claude-wt-pulser.pid
-  fi
-
-  echo ""
-  echo "Ready! Ctrl+a n/p to navigate, Ctrl+a d to detach"
-  echo ""
-
-  sleep 1
-  exec screen -r "$SESSION_NAME"
-}
-
-# =============================================================================
-# Main
-# =============================================================================
-
-BASE_BRANCH=""
+# Parse arguments
 CONTINUE_FLAG=""
 WORKERS=()
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --help|-h)
+    -h|--help)
       print_help
       exit 0
       ;;
-    --list|-l)
-      screen -list 2>/dev/null | grep claude-wt || echo "No active sessions"
+    -l|--list)
+      tmux list-sessions 2>/dev/null | grep cwt || echo "Nenhuma sessão ativa"
       exit 0
       ;;
-    --kill|-k)
-      pkill -f "pulser" 2>/dev/null || true
-      screen -X -S "$SESSION_NAME" quit 2>/dev/null || true
-      rm -f /tmp/claude-wt-*.pid /tmp/claude-wt-*.json /tmp/claude-wt.log
-      echo "Session terminated"
+    -k|--kill)
+      if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
+        tmux kill-session -t "$SESSION_NAME"
+        echo "Sessão '$SESSION_NAME' encerrada"
+        pkill -f "tmux-pulser.sh" 2>/dev/null
+      else
+        echo "Sessão '$SESSION_NAME' não existe"
+      fi
       exit 0
       ;;
-    --base|-b)
-      BASE_BRANCH="$2"
-      shift 2
+    -s|--status)
+      if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
+        echo "═══ CWT WINDOWS ═══"
+        tmux list-windows -t "$SESSION_NAME" -F "  #I: #W"
+      else
+        echo "Sessão não está rodando"
+      fi
+      exit 0
       ;;
-    --continue|-c)
+    -c|--continue)
       CONTINUE_FLAG="--continue"
       shift
       ;;
+    -b|--base)
+      export BASE_BRANCH="$2"
+      shift 2
+      ;;
     -*)
-      echo "Unknown option: $1"
-      echo "Run 'cwt --help' for usage"
+      echo "Opção desconhecida: $1"
+      echo "Use 'cwt --help' para ver opções"
       exit 1
       ;;
     *)
@@ -214,4 +95,18 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-start_session "${WORKERS[@]}"
+# Se sessão existe e não passou workers, reconecta
+if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
+  if [[ ${#WORKERS[@]} -eq 0 ]]; then
+    exec tmux attach -t "$SESSION_NAME"
+  else
+    echo "Sessão '$SESSION_NAME' já existe."
+    echo "Use: cwt --kill  para encerrar"
+    echo "Ou:  cwt         para reconectar"
+    exit 1
+  fi
+fi
+
+# Iniciar nova sessão
+export CONTINUE_FLAG
+exec "$CWT_DIR/tmux-launcher.sh" "${WORKERS[@]}"

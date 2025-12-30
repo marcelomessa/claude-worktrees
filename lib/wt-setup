@@ -1,0 +1,138 @@
+#!/bin/bash
+# =============================================================================
+# WT-SETUP - Setup CLAUDE.md templates in worktrees
+# =============================================================================
+# Copies appropriate CLAUDE.md template to each worktree's .claude/ directory
+#
+# Usage:
+#   wt-setup              # Setup all worktrees from config
+#   wt-setup front back   # Setup specific workers
+#   wt-setup --coord      # Setup coordinator only
+# =============================================================================
+
+WT_HOME="${WT_HOME:-$(dirname "$(dirname "$(realpath "$0")")")}"
+CONFIG_FILE="/tmp/claude-wt-config.json"
+TEMPLATES_DIR="$WT_HOME/templates"
+
+show_help() {
+  cat << 'EOF'
+WT-SETUP - Setup CLAUDE.md in worktrees
+
+Usage: wt-setup [OPTIONS] [worker1] [worker2] ...
+
+Options:
+  --help, -h     Show this help
+  --coord        Setup coordinator only
+  --all          Setup coordinator and all workers from config
+  --list         List available templates
+
+Examples:
+  wt-setup --all           # Setup everything
+  wt-setup front back      # Setup specific workers
+  wt-setup --coord         # Coordinator only
+
+Templates are copied to .claude/CLAUDE.md in each directory.
+EOF
+}
+
+setup_coord() {
+  local repo_root=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+  local claude_dir="$repo_root/.claude"
+
+  mkdir -p "$claude_dir"
+  cp "$TEMPLATES_DIR/CLAUDE.coord.md" "$claude_dir/CLAUDE.md"
+  echo "Coordinator: $claude_dir/CLAUDE.md"
+}
+
+setup_worker() {
+  local worker="$1"
+  local repo_root=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+
+  # Find worktree
+  local worktree_path=""
+  for pattern in "workspace-$worker" "worktree-$worker" "$worker"; do
+    if [[ -d "$repo_root/../$pattern" ]]; then
+      worktree_path="$(cd "$repo_root/../$pattern" && pwd)"
+      break
+    fi
+  done
+
+  if [[ -z "$worktree_path" ]]; then
+    echo "Worker $worker: worktree not found, skipping"
+    return 1
+  fi
+
+  local claude_dir="$worktree_path/.claude"
+  mkdir -p "$claude_dir"
+  cp "$TEMPLATES_DIR/CLAUDE.worker.md" "$claude_dir/CLAUDE.md"
+
+  # Also copy settings template
+  if [[ -f "$TEMPLATES_DIR/settings.worker.json" ]]; then
+    local settings_file="$claude_dir/settings.local.json"
+    if [[ ! -f "$settings_file" ]]; then
+      sed "s/WORKER_NAME/$worker/g" "$TEMPLATES_DIR/settings.worker.json" > "$settings_file"
+    fi
+  fi
+
+  echo "Worker $worker: $claude_dir/CLAUDE.md"
+}
+
+# Parse arguments
+SETUP_COORD=false
+SETUP_ALL=false
+WORKERS=()
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --help|-h)
+      show_help
+      exit 0
+      ;;
+    --list)
+      echo "Available templates:"
+      ls -1 "$TEMPLATES_DIR"
+      exit 0
+      ;;
+    --coord)
+      SETUP_COORD=true
+      shift
+      ;;
+    --all)
+      SETUP_ALL=true
+      shift
+      ;;
+    -*)
+      echo "Unknown option: $1"
+      exit 1
+      ;;
+    *)
+      WORKERS+=("$1")
+      shift
+      ;;
+  esac
+done
+
+# Execute setup
+if [[ "$SETUP_ALL" == "true" ]]; then
+  echo "Setting up all agents..."
+  setup_coord
+
+  if [[ -f "$CONFIG_FILE" ]]; then
+    workers=$(jq -r '.workers[]' "$CONFIG_FILE" 2>/dev/null)
+    while IFS= read -r worker; do
+      [[ -n "$worker" ]] && setup_worker "$worker"
+    done <<< "$workers"
+  fi
+  echo "Done!"
+
+elif [[ "$SETUP_COORD" == "true" ]]; then
+  setup_coord
+
+elif [[ ${#WORKERS[@]} -gt 0 ]]; then
+  for worker in "${WORKERS[@]}"; do
+    setup_worker "$worker"
+  done
+
+else
+  show_help
+fi
