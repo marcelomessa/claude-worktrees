@@ -69,9 +69,15 @@ COORDINATOR (CPU)
 ## Task Completion
 
 When done with a task:
-1. Commit changes (if requested)
-2. Send completion message to coord
-3. Clear the task file: `rm /tmp/claude-wt-tasks/$(echo $CLAUDE_WORKER_ID).task`
+1. Commit changes (if requested) - use `git add <arquivos>` (NUNCA git add -A)
+2. Send completion message to coord: `wt-msg send coord "task X completed, ready for merge/deploy"`
+3. **AGUARDAR** coordenador fazer merge e deploy
+4. Clear the task file: `rm /tmp/claude-wt-tasks/$(echo $CLAUDE_WORKER_ID).task`
+
+**IMPORTANTE**: Voce NAO faz deploy. O coordenador:
+- Faz merge da sua branch para main
+- Executa `azion deploy` ou `azion update edge-function`
+- Testa em producao
 
 ## Git Workflow
 
