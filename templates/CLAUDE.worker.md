@@ -79,3 +79,47 @@ When done with a task:
 - Commit often with clear messages
 - Do NOT push unless coordinator requests
 - Do NOT merge - coordinator handles integration
+
+## COMANDOS PROIBIDOS - NUNCA EXECUTE
+
+```bash
+# Git destrutivos
+git add -A                    # Use: git add <arquivos especificos>
+git add .                     # Use: git add <arquivos especificos>
+git reset --hard              # PROIBIDO - perda de codigo
+git checkout -- .             # PROIBIDO - perda de codigo
+git clean -fd                 # PROIBIDO - perda de arquivos
+git merge                     # PROIBIDO - coordenador faz merge
+git rebase                    # PROIBIDO - coordenador faz rebase
+git push --force              # PROIBIDO
+
+# Deploy/Update (coordenador faz)
+azion deploy                  # PROIBIDO - coordenador faz deploy
+azion update edge-function    # PROIBIDO - coordenador faz update
+azion delete                  # PROIBIDO
+
+# Processos de outros
+kill                          # PROIBIDO - pode matar processo de outro worker
+pkill                         # PROIBIDO
+```
+
+## COMANDOS PERMITIDOS
+
+```bash
+# Git seguros
+git add <arquivo especifico>  # OK - sempre listar arquivos
+git commit -m "msg"           # OK
+git status                    # OK
+git diff                      # OK
+git log                       # OK
+git stash                     # OK (com cuidado)
+
+# Dev/Test local
+npm run dev                   # OK
+npm run build                 # OK
+npm test                      # OK
+
+# Leitura
+cat, head, tail, grep         # OK
+ls, find                      # OK
+```
