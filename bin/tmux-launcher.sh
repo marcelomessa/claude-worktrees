@@ -15,6 +15,8 @@ PULSER_INTERVAL=${PULSER_INTERVAL:-30}
 WORKSPACES_FILE="/tmp/cwt-workers-list.txt"
 LOG_DIR="${CWT_LOG_DIR:-$HOME/repos/terminal_logs}"
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+CWT_CONFIG_DIR="$(cd "$(dirname "$0")/../config" && pwd)"
+TMUX_CONF="$CWT_CONFIG_DIR/tmux.conf"
 
 # Detectar diretório base do projeto (onde está o .git principal)
 PROJECT_DIR="${CWT_PROJECT:-$(pwd)}"
@@ -56,6 +58,7 @@ echo "════════════════════════�
 echo " Coordinator: window 0"
 echo " Workers: ${WORKSPACES[*]}"
 echo " Session: $SESSION_NAME"
+echo " Mouse scroll: enabled (trackpad scrolls history)"
 echo "═══════════════════════════════════════════════════════════════"
 
 # Verificar se sessão já existe
@@ -75,7 +78,11 @@ echo "📝 Logs serão salvos em: $LOG_DIR/cwt-*-$TIMESTAMP.log"
 
 # Criar sessão tmux com window 0 (coordinator)
 echo "📺 Criando sessão tmux..."
-tmux new-session -d -s "$SESSION_NAME" -n "coordinator"
+if [[ -f "$TMUX_CONF" ]]; then
+  tmux -f "$TMUX_CONF" new-session -d -s "$SESSION_NAME" -n "coordinator"
+else
+  tmux new-session -d -s "$SESSION_NAME" -n "coordinator"
+fi
 sleep 0.3
 
 # Habilitar logging para coordinator

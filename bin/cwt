@@ -39,6 +39,11 @@ Atalhos tmux:
   Ctrl+b p       Window anterior
   Ctrl+b 0-9     Ir para window N
   Ctrl+b d       Desconectar (continua rodando)
+
+Mouse/Trackpad:
+  Scroll         Navega pelo histórico (scrollback)
+  Click          Seleciona pane/window
+  q ou Esc       Sai do modo scroll
 EOF
 }
 
