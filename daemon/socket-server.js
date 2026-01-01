@@ -229,7 +229,7 @@ class SocketServer {
           break;
 
         case 'get_messages':
-          result = this.stateManager.getMessages(clientInfo.workerId, params.since);
+          result = this.stateManager.getMessages(clientInfo.workerId, params?.since);
           break;
 
         // === Info ===

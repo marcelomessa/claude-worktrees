@@ -5,18 +5,24 @@
 # Cria sessão tmux com múltiplas windows para workers Claude
 # Suporta estrutura de projeto com .cwt/ ou modo legado (git worktrees)
 #
-# Uso: ./tmux-launcher.sh [--continue|-c] [workspace1] [workspace2] ...
+# Uso: ./tmux-launcher.sh [--continue|-c] [--strict] [workspace1] [workspace2] ...
 #   --continue, -c  Resume previous Claude sessions in each worker
+#   --strict        Use Claude's native permissions (no --dangerously-skip-permissions)
 # =============================================================================
 
 # Parse arguments
 CONTINUE_FLAG=""
+SKIP_PERMISSIONS="${SKIP_PERMISSIONS:-1}"  # Default: skip permissions, use bash-validator
 WORKSPACES_ARGS=()
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --continue|-c)
       CONTINUE_FLAG="--continue"
+      shift
+      ;;
+    --strict)
+      SKIP_PERMISSIONS=""  # Use Claude's native permissions
       shift
       ;;
     *)
@@ -377,7 +383,7 @@ tmux send-keys -t "$SESSION_NAME:0" "cd '$COORD_DIR'" Enter
 sleep 0.2
 tmux send-keys -t "$SESSION_NAME:0" "echo '🎯 COORDINATOR - $COORD_DIR_NAME ($CURRENT_BRANCH)'" Enter
 sleep 0.2
-tmux send-keys -t "$SESSION_NAME:0" "claude --dangerously-skip-permissions $CONTINUE_FLAG" Enter
+tmux send-keys -t "$SESSION_NAME:0" "claude ${SKIP_PERMISSIONS:+--dangerously-skip-permissions} $CONTINUE_FLAG" Enter
 
 # Aguardar Claude iniciar e enviar prompt inicial
 sleep 3
@@ -434,7 +440,7 @@ for workspace in "${WORKSPACES[@]}"; do
   sleep 0.2
   tmux send-keys -t "$SESSION_NAME:$WINDOW_NUM" "cd '$WORKSPACE_DIR'" Enter
   sleep 0.2
-  tmux send-keys -t "$SESSION_NAME:$WINDOW_NUM" "claude --dangerously-skip-permissions $CONTINUE_FLAG" Enter
+  tmux send-keys -t "$SESSION_NAME:$WINDOW_NUM" "claude ${SKIP_PERMISSIONS:+--dangerously-skip-permissions} $CONTINUE_FLAG" Enter
 
   # Guardar info para enviar prompt depois
   WORKER_WINDOWS+=("$WINDOW_NUM:$workspace")

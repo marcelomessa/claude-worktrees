@@ -1,21 +1,17 @@
 #!/bin/bash
 # =============================================================================
-# BASH-VALIDATOR - PreToolUse hook for session overrides
+# BASH-VALIDATOR - PreToolUse hook for command validation
 # =============================================================================
 #
-# Este hook NÃO duplica regras do Claude settings.json.
-# Em vez disso, gerencia OVERRIDES de sessão:
+# Este hook é a camada de proteção quando Claude roda com
+# --dangerously-skip-permissions (modo padrão do CWT).
 #
-# - auto_approve: auto-responde "y" para comandos em "ask" mode
-# - block: bloqueios temporários de sessão
-#
-# O settings.json do Claude controla:
-# - deny: bloqueio absoluto (não pode ser sobrescrito)
-# - ask: prompt de confirmação (pode ser auto-aprovado aqui)
-# - allow: permitido (pode ser bloqueado temporariamente aqui)
+# Funcionalidades:
+# 1. WORKER RESTRICTIONS: Bloqueia comandos perigosos para workers
+# 2. SESSION OVERRIDES: Permite bloqueios/aprovações temporárias
 #
 # Exit codes:
-#   0 - Permite (continua para handling nativo do Claude)
+#   0 - Permite comando
 #   2 - Bloqueia (stderr mostrado ao Claude)
 # =============================================================================
 
@@ -53,6 +49,34 @@ block() {
   echo "❌ BLOCKED: $1" >&2
   exit 2
 }
+
+# =============================================================================
+# WORKER RESTRICTIONS (quando skip-permissions está ativo)
+# =============================================================================
+if [[ "$WORKER_ID" != "coordinator" && -n "$WORKER_ID" ]]; then
+
+  # Git: push, merge, rebase, checkout protected branches
+  echo "$COMMAND" | grep -qE "git\s+push" && block "git push - apenas coordinator"
+  echo "$COMMAND" | grep -qE "git\s+merge" && block "git merge - apenas coordinator"
+  echo "$COMMAND" | grep -qE "git\s+rebase" && block "git rebase - apenas coordinator"
+  echo "$COMMAND" | grep -qE "git\s+checkout\s+(main|master|dev|develop)\b" && block "checkout branch protegida - apenas coordinator"
+  echo "$COMMAND" | grep -qE "git\s+reset\s+--hard" && block "git reset --hard - perigoso"
+
+  # Azion CLI
+  echo "$COMMAND" | grep -qE "azion\s+(deploy|delete|create|update|link|unlink)" && block "azion CLI - apenas coordinator"
+
+  # Process control
+  echo "$COMMAND" | grep -qE "\b(kill|pkill|killall)\b" && block "kill process - apenas coordinator"
+
+fi
+
+# =============================================================================
+# UNIVERSAL RESTRICTIONS (todos, incluindo coordinator)
+# =============================================================================
+echo "$COMMAND" | grep -qE "rm\s+-rf\s+(/|~|\*)" && block "rm -rf perigoso"
+echo "$COMMAND" | grep -qE ">\s*/dev/sd" && block "write to disk device"
+echo "$COMMAND" | grep -qE "mkfs\." && block "mkfs proibido"
+echo "$COMMAND" | grep -qE "dd\s+if=.*of=/dev" && block "dd to device"
 
 # =============================================================================
 # CHECK SESSION OVERRIDES
