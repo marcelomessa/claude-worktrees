@@ -32,8 +32,8 @@ set -- "${WORKSPACES_ARGS[@]}"
 # Usar sessão do ambiente ou padrão
 SESSION_NAME="${SESSION_NAME:-cwt}"
 PULSER_INTERVAL=${PULSER_INTERVAL:-30}
-LOG_DIR="${CWT_LOG_DIR:-$HOME/repos/terminal_logs}"
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+# LOG_DIR será definido após detectar PROJECT_ROOT
 CWT_BIN_DIR="$(cd "$(dirname "$0")" && pwd)"
 CWT_CONFIG_DIR="$(cd "$CWT_BIN_DIR/../config" && pwd)"
 CWT_TEMPLATES_DIR="$(cd "$CWT_BIN_DIR/../templates" && pwd)"
@@ -48,10 +48,12 @@ if [[ -n "$PROJECT_ROOT" && -d "$PROJECT_ROOT/.cwt" ]]; then
   PROJECT_DIR="$PROJECT_ROOT"
   STATE_FILE="$PROJECT_ROOT/.cwt/state.json"
   WORKSPACES_FILE="$PROJECT_ROOT/.cwt/workers.txt"
+  LOG_DIR="${CWT_LOG_DIR:-$PROJECT_ROOT/.cwt/logs}"
 else
   PROJECT_DIR="${CWT_PROJECT:-$(pwd)}"
   STATE_FILE="/tmp/claude-wt-state.json"
   WORKSPACES_FILE="/tmp/cwt-workers-list.txt"
+  LOG_DIR="${CWT_LOG_DIR:-/tmp/cwt-logs}"
 fi
 
 # ============================================================================
