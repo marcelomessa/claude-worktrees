@@ -13,6 +13,27 @@ echo "║         Claude Worktrees - Multi-Agent Environment            ║"
 echo "╚═══════════════════════════════════════════════════════════════╝"
 echo ""
 
+# Check dependencies
+echo "🔍 Verificando dependências..."
+MISSING=""
+command -v git >/dev/null 2>&1 || MISSING="$MISSING git"
+command -v tmux >/dev/null 2>&1 || MISSING="$MISSING tmux"
+command -v jq >/dev/null 2>&1 || MISSING="$MISSING jq"
+command -v claude >/dev/null 2>&1 || MISSING="$MISSING claude"
+
+if [[ -n "$MISSING" ]]; then
+  echo ""
+  echo "⚠️  Dependências faltando:$MISSING"
+  echo ""
+  echo "Instale com:"
+  echo "  brew install tmux jq"
+  echo "  npm install -g @anthropic-ai/claude-code"
+  echo ""
+  read -p "Continuar mesmo assim? [y/N] " -n 1 -r
+  echo
+  [[ ! $REPLY =~ ^[Yy]$ ]] && exit 1
+fi
+
 # Get script directory
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
@@ -25,6 +46,7 @@ mkdir -p "$BIN_DIR"
 echo "📦 Copiando arquivos..."
 cp -r "$SCRIPT_DIR/bin" "$INSTALL_DIR/"
 cp -r "$SCRIPT_DIR/lib" "$INSTALL_DIR/"
+cp -r "$SCRIPT_DIR/config" "$INSTALL_DIR/" 2>/dev/null || true
 cp -r "$SCRIPT_DIR/hooks" "$INSTALL_DIR/" 2>/dev/null || true
 cp -r "$SCRIPT_DIR/templates" "$INSTALL_DIR/" 2>/dev/null || true
 
