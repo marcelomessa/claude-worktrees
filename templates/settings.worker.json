@@ -39,10 +39,16 @@
       "Bash(git reset --hard:*)",
       "Bash(git checkout main)",
       "Bash(git checkout master)",
+      "Bash(git checkout dev)",
+      "Bash(git checkout develop)",
       "Bash(git add -A:*)",
       "Bash(git add .:*)",
       "Bash(azion deploy:*)",
       "Bash(azion delete:*)",
+      "Bash(azion create:*)",
+      "Bash(azion update:*)",
+      "Bash(azion link:*)",
+      "Bash(azion unlink:*)",
       "Bash(kill:*)",
       "Bash(pkill:*)",
       "Bash(killall:*)"
@@ -57,6 +63,26 @@
             "type": "command",
             "command": "~/.claude-worktrees/hooks/bash-validator.sh",
             "timeout": 5000
+          }
+        ]
+      },
+      {
+        "matcher": "Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude-worktrees/hooks/file-protector.sh",
+            "timeout": 3000
+          }
+        ]
+      },
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude-worktrees/hooks/file-protector.sh",
+            "timeout": 3000
           }
         ]
       }

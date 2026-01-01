@@ -176,6 +176,8 @@ cwt_update() {
 cwt_init() {
   local project_name=""
   local coordinator=""
+  local base_branch=""
+  local force=false
 
   # Parse args do init
   while [[ $# -gt 0 ]]; do
@@ -187,6 +189,14 @@ cwt_init() {
       --repo|-r)
         coordinator="$2"
         shift 2
+        ;;
+      --base|-b)
+        base_branch="$2"
+        shift 2
+        ;;
+      --force|-f)
+        force=true
+        shift
         ;;
       *)
         shift
@@ -215,6 +225,46 @@ cwt_init() {
     fi
   fi
 
+  # Detectar branch base se não especificada
+  if [[ -z "$base_branch" ]]; then
+    if git rev-parse --git-dir &>/dev/null; then
+      base_branch=$(git branch --show-current)
+    fi
+  fi
+
+  # Criar branch de trabalho se estamos em um repo
+  local work_branch=""
+  if git rev-parse --git-dir &>/dev/null; then
+    work_branch="cwt/$project_name"
+
+    # Verificar se estamos em branch protegida
+    if [[ "$base_branch" == "main" || "$base_branch" == "master" || "$base_branch" == "dev" || "$base_branch" == "develop" ]]; then
+      if [[ "$force" != "true" ]]; then
+        echo ""
+        echo "⚠️  Branch '$base_branch' é protegida."
+        echo "   Criando branch de trabalho: $work_branch"
+        echo ""
+
+        # Criar branch de trabalho se não existe
+        if ! git show-ref --verify --quiet "refs/heads/$work_branch"; then
+          git branch "$work_branch" "$base_branch"
+          echo "   ✅ Branch '$work_branch' criada a partir de '$base_branch'"
+        else
+          echo "   ℹ️  Branch '$work_branch' já existe"
+        fi
+
+        # Checkout para branch de trabalho
+        git checkout "$work_branch"
+        echo "   ✅ Checkout para '$work_branch'"
+      else
+        echo "⚠️  --force: Trabalhando diretamente em '$base_branch'"
+        work_branch="$base_branch"
+      fi
+    else
+      work_branch="$base_branch"
+    fi
+  fi
+
   # Criar estrutura
   mkdir -p .cwt
 
@@ -222,6 +272,8 @@ cwt_init() {
 {
   "name": "$project_name",
   "coordinator": "$coordinator",
+  "base_branch": "$base_branch",
+  "work_branch": "$work_branch",
   "created": "$(date -Iseconds)",
   "type": "project"
 }
@@ -236,6 +288,12 @@ EOF
   echo " Sessão:  cwt-$project_name"
   if [[ -n "$coordinator" ]]; then
     echo " Coord:   $coordinator"
+  fi
+  if [[ -n "$base_branch" ]]; then
+    echo " Base:    $base_branch"
+  fi
+  if [[ -n "$work_branch" && "$work_branch" != "$base_branch" ]]; then
+    echo " Work:    $work_branch"
   fi
   echo " Config:  .cwt/config.json"
   echo " Estado:  .cwt/state.json"

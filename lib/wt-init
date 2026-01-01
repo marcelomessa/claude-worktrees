@@ -14,6 +14,20 @@ set -e
 
 WT_HOME="${WT_HOME:-$(dirname "$(dirname "$(realpath "$0")")")}"
 TEMPLATES_DIR="$WT_HOME/templates"
+INSTALL_DIR="$HOME/.claude-worktrees"
+
+# Detectar .cwt/ subindo a árvore de diretórios
+find_cwt_root() {
+  local dir="$PWD"
+  while [[ "$dir" != "/" ]]; do
+    if [[ -d "$dir/.cwt" ]]; then
+      echo "$dir"
+      return 0
+    fi
+    dir=$(dirname "$dir")
+  done
+  return 1
+}
 
 show_help() {
   cat << 'EOF'
@@ -23,8 +37,8 @@ Usage: wt-init [OPTIONS] <worker1> [worker2] ...
 
 Options:
   --help, -h        Show this help
-  --base, -b BRANCH Base branch for worktrees (default: current branch)
-  --prefix, -p PRE  Branch prefix (default: feature)
+  --base, -b BRANCH Base branch for worktrees (default: work_branch from config)
+  --prefix, -p PRE  Branch prefix (default: cwt/<projeto> or feature)
   --dry-run         Show what would be done without doing it
 
 Examples:
@@ -34,14 +48,14 @@ Examples:
 
 Creates:
   - ../workspace-{name}/ directories
-  - feature/{name} branches (or custom prefix)
-  - .claude/CLAUDE.md in each worktree
+  - cwt/<projeto>/{name} branches (if in cwt project)
+  - .claude/CLAUDE.md and settings.json in each worktree
 EOF
 }
 
 # Defaults
 BASE_BRANCH=""
-PREFIX="feature"
+PREFIX=""
 DRY_RUN=false
 WORKERS=()
 
@@ -89,7 +103,24 @@ fi
 
 PARENT_DIR=$(dirname "$REPO_ROOT")
 CURRENT_BRANCH=$(git branch --show-current)
+
+# Detectar projeto CWT e ler config
+CWT_ROOT=$(find_cwt_root)
+PROJECT_NAME=""
+if [[ -n "$CWT_ROOT" && -f "$CWT_ROOT/.cwt/config.json" ]]; then
+  PROJECT_NAME=$(jq -r '.name // empty' "$CWT_ROOT/.cwt/config.json" 2>/dev/null)
+  WORK_BRANCH=$(jq -r '.work_branch // empty' "$CWT_ROOT/.cwt/config.json" 2>/dev/null)
+
+  # Usar work_branch como base se não especificado
+  [[ -z "$BASE_BRANCH" && -n "$WORK_BRANCH" ]] && BASE_BRANCH="$WORK_BRANCH"
+
+  # Usar cwt/<projeto> como prefix se não especificado
+  [[ -z "$PREFIX" && -n "$PROJECT_NAME" ]] && PREFIX="cwt/$PROJECT_NAME"
+fi
+
+# Defaults se não detectou projeto
 BASE_BRANCH="${BASE_BRANCH:-$CURRENT_BRANCH}"
+PREFIX="${PREFIX:-feature}"
 
 echo "╔═══════════════════════════════════════════════════════════════╗"
 echo "║         WT-INIT - Create Multi-Agent Worktrees                ║"
@@ -133,13 +164,35 @@ for worker in "${WORKERS[@]}"; do
     git worktree add -b "$BRANCH_NAME" "$WORKTREE_PATH" "$BASE_BRANCH"
   fi
 
-  # Setup CLAUDE.md
+  # Setup .claude/
   CLAUDE_DIR="$WORKTREE_PATH/.claude"
   mkdir -p "$CLAUDE_DIR"
 
+  # CLAUDE.md
   if [[ -f "$TEMPLATES_DIR/CLAUDE.worker.md" ]]; then
     sed "s/WORKER_ID/$worker/g" "$TEMPLATES_DIR/CLAUDE.worker.md" > "$CLAUDE_DIR/CLAUDE.md"
-    echo "  ✓ CLAUDE.md created"
+    echo "  ✓ CLAUDE.md"
+  fi
+
+  # settings.json com WORKER_ID correto
+  if [[ -f "$INSTALL_DIR/templates/settings.worker.json" ]]; then
+    sed "s/WORKER_NAME/$worker/g" "$INSTALL_DIR/templates/settings.worker.json" > "$CLAUDE_DIR/settings.json"
+    echo "  ✓ settings.json (WORKER_ID: $worker)"
+  elif [[ -f "$TEMPLATES_DIR/settings.worker.json" ]]; then
+    sed "s/WORKER_NAME/$worker/g" "$TEMPLATES_DIR/settings.worker.json" > "$CLAUDE_DIR/settings.json"
+    echo "  ✓ settings.json (WORKER_ID: $worker)"
+  fi
+
+  # Symlinks para hooks
+  if [[ -d "$INSTALL_DIR/hooks" ]]; then
+    ln -sf "$INSTALL_DIR/hooks/wt-check.sh" "$CLAUDE_DIR/wt-check.sh"
+    ln -sf "$INSTALL_DIR/hooks/wt-sync.sh" "$CLAUDE_DIR/wt-sync.sh"
+    echo "  ✓ hooks symlinks"
+  fi
+
+  # Registrar no workers.txt do projeto
+  if [[ -n "$CWT_ROOT" ]]; then
+    echo "$WORKTREE_PATH" >> "$CWT_ROOT/.cwt/workers.txt"
   fi
 
   echo "  ✅ Done"
