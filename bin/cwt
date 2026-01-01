@@ -10,7 +10,21 @@
 #   cwt --kill                    # Encerra sessão
 # =============================================================================
 
-CWT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# Resolver symlinks para encontrar o diretório real do script
+resolve_symlink() {
+  local target="$1"
+  # macOS não tem readlink -f, então fazemos manualmente
+  while [[ -L "$target" ]]; do
+    local dir=$(dirname "$target")
+    target=$(readlink "$target")
+    # Se o target é relativo, resolver a partir do diretório
+    [[ "$target" != /* ]] && target="$dir/$target"
+  done
+  echo "$target"
+}
+
+SCRIPT_PATH=$(resolve_symlink "$0")
+CWT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
 
 # Detectar .cwt/ subindo a árvore de diretórios
 find_cwt_root() {
