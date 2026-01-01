@@ -3,36 +3,70 @@
 # CWT - Claude WorkTrees (tmux version)
 # =============================================================================
 # Uso:
-#   cwt front back sec           # Inicia com workers
-#   cwt -c front back            # Resume sessões (--continue)
-#   cwt --list                   # Lista sessões
-#   cwt --kill                   # Encerra sessão
+#   cwt init                      # Inicializa projeto CWT
+#   cwt front back sec            # Inicia com workers
+#   cwt -c front back             # Resume sessões (--continue)
+#   cwt --list                    # Lista sessões
+#   cwt --kill                    # Encerra sessão
 # =============================================================================
 
 CWT_DIR="$(cd "$(dirname "$0")" && pwd)"
-SESSION_NAME="cwt"
+
+# Detectar .cwt/ subindo a árvore de diretórios
+find_cwt_root() {
+  local dir="$PWD"
+  while [[ "$dir" != "/" ]]; do
+    if [[ -d "$dir/.cwt" ]]; then
+      echo "$dir"
+      return 0
+    fi
+    dir=$(dirname "$dir")
+  done
+  return 1
+}
+
+# Nome da sessão baseado no projeto
+get_session_name() {
+  local cwt_root=$(find_cwt_root)
+  if [[ -n "$cwt_root" ]]; then
+    local project_name=$(basename "$cwt_root")
+    echo "cwt-$project_name"
+  else
+    echo "cwt"
+  fi
+}
+
+SESSION_NAME=$(get_session_name)
 
 print_help() {
   cat << 'EOF'
 CWT - Claude WorkTrees (tmux)
 
-Uso: cwt [OPÇÕES] [worker1] [worker2] ...
+Uso: cwt [COMANDO] [OPÇÕES] [worker1] [worker2] ...
 
-Inicia sessão tmux com coordinator + workers.
-Coordinator na window 0, workers nas seguintes.
+Comandos:
+  init [--name NAME]   Inicializa projeto CWT no diretório atual
 
 Opções:
   -h, --help       Mostra esta ajuda
   -c, --continue   Resume sessões Claude anteriores
   -b, --base       Branch base do coordenador (para merges)
   -l, --list       Lista sessões ativas
-  -k, --kill       Encerra sessão
+  -a, --list-all   Lista TODAS as sessões CWT (todos projetos)
+  -k, --kill       Encerra sessão do projeto atual
   -s, --status     Mostra status dos workers
 
+Estrutura de Projeto:
+  ~/projects/meu-projeto/
+  ├── .cwt/              # Criado por 'cwt init'
+  ├── main/              # Coordenador (clone do repo)
+  ├── feature-a/         # Worker (worktree)
+  └── feature-b/         # Worker (worktree ou repo)
+
 Exemplos:
-  cwt front back sec           # 3 workers
-  cwt -c front back            # Resume sessões
-  cwt                          # Detecta worktrees automaticamente
+  cwt init --name meu-projeto    # Inicializar projeto
+  cwt feature-a feature-b        # Iniciar com workers
+  cwt                            # Detectar repos automaticamente
 
 Atalhos tmux:
   Ctrl+b n       Próxima window
@@ -47,9 +81,75 @@ Mouse/Trackpad:
 EOF
 }
 
+# Comando init
+cwt_init() {
+  local project_name=""
+
+  # Parse args do init
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --name|-n)
+        project_name="$2"
+        shift 2
+        ;;
+      *)
+        shift
+        ;;
+    esac
+  done
+
+  # Default: nome do diretório atual
+  [[ -z "$project_name" ]] && project_name=$(basename "$PWD")
+
+  # Verificar se já existe
+  if [[ -d ".cwt" ]]; then
+    echo "⚠️  Projeto CWT já inicializado neste diretório"
+    echo "   Config: .cwt/config.json"
+    cat .cwt/config.json 2>/dev/null
+    exit 1
+  fi
+
+  # Criar estrutura
+  mkdir -p .cwt
+
+  cat > .cwt/config.json << EOF
+{
+  "name": "$project_name",
+  "created": "$(date -Iseconds)",
+  "type": "project"
+}
+EOF
+
+  echo '{"workers":{},"messages":[]}' > .cwt/state.json
+
+  echo "═══════════════════════════════════════"
+  echo " ✅ Projeto CWT inicializado"
+  echo "═══════════════════════════════════════"
+  echo " Nome:    $project_name"
+  echo " Sessão:  cwt-$project_name"
+  echo " Config:  .cwt/config.json"
+  echo " Estado:  .cwt/state.json"
+  echo "═══════════════════════════════════════"
+  echo ""
+  echo "Próximos passos:"
+  echo "  1. Clone o repo principal: git clone <url> main"
+  echo "  2. Crie worktrees: cd main && git worktree add ../feature-x -b feature/x"
+  echo "  3. Inicie: cwt feature-x feature-y"
+  echo ""
+}
+
 # Parse arguments
 CONTINUE_FLAG=""
 WORKERS=()
+
+# Primeiro argumento pode ser comando
+case "${1:-}" in
+  init)
+    shift
+    cwt_init "$@"
+    exit 0
+    ;;
+esac
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -58,7 +158,13 @@ while [[ $# -gt 0 ]]; do
       exit 0
       ;;
     -l|--list)
-      tmux list-sessions 2>/dev/null | grep cwt || echo "Nenhuma sessão ativa"
+      echo "═══ Sessão do projeto atual ═══"
+      tmux list-sessions 2>/dev/null | grep "^$SESSION_NAME" || echo "Nenhuma sessão ativa para: $SESSION_NAME"
+      exit 0
+      ;;
+    -a|--list-all)
+      echo "═══ Todas as sessões CWT ═══"
+      tmux list-sessions 2>/dev/null | grep "^cwt" || echo "Nenhuma sessão CWT ativa"
       exit 0
       ;;
     -k|--kill)
@@ -73,10 +179,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     -s|--status)
       if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
-        echo "═══ CWT WINDOWS ═══"
+        echo "═══ CWT: $SESSION_NAME ═══"
         tmux list-windows -t "$SESSION_NAME" -F "  #I: #W"
       else
-        echo "Sessão não está rodando"
+        echo "Sessão '$SESSION_NAME' não está rodando"
       fi
       exit 0
       ;;
@@ -114,4 +220,6 @@ fi
 
 # Iniciar nova sessão
 export CONTINUE_FLAG
+export SESSION_NAME
+export CWT_PROJECT_ROOT=$(find_cwt_root)
 exec "$CWT_DIR/tmux-launcher.sh" "${WORKERS[@]}"

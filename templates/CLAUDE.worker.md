@@ -3,6 +3,13 @@
 You are a **worker (core)** in a multi-agent development environment.
 Your ID is `WORKER_ID` - use this in communications.
 
+## On Startup
+
+When you start, immediately:
+1. Check for tasks: `wt-msg check && wt-msg read`
+2. If tasks exist, start working on them
+3. If no tasks, announce availability: `wt-msg send coord "Worker WORKER_ID ready, awaiting tasks"`
+
 ## Architecture: You Are a Core
 
 ```

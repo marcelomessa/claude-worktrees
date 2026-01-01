@@ -2,7 +2,7 @@
 # =============================================================================
 # WT-TASK - Send tasks to workers
 # =============================================================================
-# Sends a task to a worker and optionally injects it into their screen.
+# Sends a task to a worker and optionally injects it into their tmux window.
 #
 # Usage:
 #   wt-task <worker> "task description"
@@ -10,10 +10,52 @@
 #   wt-task --inject back "Fix API endpoint"
 # =============================================================================
 
-STATE_FILE="/tmp/claude-wt-state.json"
-TASKS_DIR="/tmp/claude-wt-tasks"
-SESSION_NAME="claude-wt"
 WORKER_ID="${CLAUDE_WORKER_ID:-coord}"
+TASKS_DIR="/tmp/claude-wt-tasks"
+
+# Detectar .cwt/ subindo a árvore de diretórios
+find_cwt_root() {
+  # 1. Variável de ambiente
+  if [[ -n "$CWT_PROJECT_ROOT" && -d "$CWT_PROJECT_ROOT/.cwt" ]]; then
+    echo "$CWT_PROJECT_ROOT"
+    return 0
+  fi
+
+  # 2. Subir árvore
+  local dir="$PWD"
+  while [[ "$dir" != "/" ]]; do
+    if [[ -d "$dir/.cwt" ]]; then
+      echo "$dir"
+      return 0
+    fi
+    dir=$(dirname "$dir")
+  done
+
+  return 1
+}
+
+# Determinar arquivo de estado e sessão
+get_state_file() {
+  local cwt_root=$(find_cwt_root)
+  if [[ -n "$cwt_root" ]]; then
+    echo "$cwt_root/.cwt/state.json"
+  else
+    echo "/tmp/claude-wt-state.json"
+  fi
+}
+
+get_session_name() {
+  local cwt_root=$(find_cwt_root)
+  if [[ -n "$cwt_root" ]]; then
+    local project_name=$(basename "$cwt_root")
+    echo "cwt-$project_name"
+  else
+    echo "cwt"
+  fi
+}
+
+STATE_FILE=$(get_state_file)
+SESSION_NAME=$(get_session_name)
 
 # Ensure tasks directory exists
 mkdir -p "$TASKS_DIR"
@@ -30,7 +72,7 @@ WT-TASK - Send tasks to workers
 Usage: wt-task [OPTIONS] <worker> "task description"
 
 Options:
-  --inject, -i    Also inject task into worker's screen
+  --inject, -i    Also inject task into worker's tmux window
   --list, -l      List pending tasks
   --clear         Clear completed tasks
   --help, -h      Show this help
@@ -98,8 +140,10 @@ EOF
     "$STATE_FILE" > "$STATE_FILE.tmp" && mv "$STATE_FILE.tmp" "$STATE_FILE"
 
   echo "Task sent to $target"
+  echo "Session: $SESSION_NAME"
+  echo "State: $STATE_FILE"
 
-  # Inject into screen if requested
+  # Inject into tmux if requested
   if [[ "$inject" == "true" ]]; then
     inject_task "$target" "$task"
   fi
@@ -109,21 +153,19 @@ inject_task() {
   local target="$1"
   local task="$2"
 
-  # Find window number for target
-  local window_list=$(screen -S "$SESSION_NAME" -Q windows 2>/dev/null)
+  # Check if session exists
+  if ! tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
+    echo "Warning: Session '$SESSION_NAME' not found"
+    return 1
+  fi
 
-  # Try to find the window
-  local window_num=""
-  while IFS= read -r line; do
-    if echo "$line" | grep -q "$target"; then
-      window_num=$(echo "$line" | grep -o '^[0-9]*')
-      break
-    fi
-  done <<< "$(screen -S "$SESSION_NAME" -Q windows 2>/dev/null | tr ' ' '\n')"
+  # Find window by name
+  local window_num=$(tmux list-windows -t "$SESSION_NAME" -F "#{window_index}:#{window_name}" 2>/dev/null | \
+    grep ":$target$" | cut -d: -f1)
 
   if [[ -n "$window_num" ]]; then
     # Inject the task as input
-    screen -S "$SESSION_NAME" -p "$window_num" -X stuff "$task"$'\n'
+    tmux send-keys -t "$SESSION_NAME:$window_num" "$task" Enter
     echo "Task injected into window $window_num ($target)"
   else
     echo "Warning: Could not find window for $target"
@@ -132,6 +174,8 @@ inject_task() {
 
 # Parse arguments
 INJECT="false"
+TARGET=""
+TASK=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in

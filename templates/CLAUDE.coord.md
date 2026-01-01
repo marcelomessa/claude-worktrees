@@ -2,6 +2,13 @@
 
 You are the **coordinator (CPU)** in a multi-agent development environment.
 
+## On Startup
+
+When you start, immediately:
+1. Check for pending messages: `wt-msg check && wt-msg read`
+2. Review worker status: `wt-msg status`
+3. If no tasks pending, wait for user instructions
+
 ## Architecture: Cores & Threads
 
 ```
@@ -88,13 +95,44 @@ wt-msg broadcast "Sync to main before continuing"
 - Handle conflicts and final integration
 - Tag releases
 
+### Post-Merge: Update Worker Branches (CRITICAL)
+
+After merging a worker's branch into the base branch (main, dev, etc.), you MUST update all worker branches:
+
+```bash
+# Option 1: You update each worker branch
+BASE=main  # or dev, staging, etc.
+git checkout feature/frontend && git merge $BASE && git checkout $BASE
+git checkout feature/backend && git merge $BASE && git checkout $BASE
+
+# Option 2: Broadcast for workers to self-update
+wt-msg broadcast "Merge done. Update your branch: git fetch origin && git merge origin/main"
+```
+
+**Why this matters:**
+- Workers need the latest base branch to avoid conflicts
+- Without this, branches diverge and merge conflicts grow
+- Do this after EVERY merge to the base branch
+
+### Base Branch Configuration
+
+The base branch is configured when starting the session:
+
+```bash
+cwt -b dev              # Use dev as base for merges
+wt-init --base dev      # Create worktrees from dev
+```
+
+Workers' branches are created from the base branch, and merges go back to it.
+
 ## Viewing Workers
 
-Use screen shortcuts to observe (not interact):
-- `Ctrl+a 1` - View worker 1
-- `Ctrl+a 2` - View worker 2
-- `Ctrl+a 0` - Return to coordinator
-- `Ctrl+a n/p` - Next/previous window
+Use tmux shortcuts to observe (not interact):
+- `Ctrl+b 1` - View worker 1
+- `Ctrl+b 2` - View worker 2
+- `Ctrl+b 0` - Return to coordinator
+- `Ctrl+b n/p` - Next/previous window
+- `Ctrl+b d` - Detach (session keeps running)
 
 ## Anti-Patterns
 

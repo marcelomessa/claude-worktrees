@@ -74,7 +74,7 @@ workspace-backend/             ← feature/backend branch
 ```
                     ┌─────────────┐
                     │ COORDINATOR │
-                    │  (CPU)      │
+                    │  (main/)    │
                     └──────┬──────┘
                            │
            ┌───────────────┼───────────────┐
@@ -85,10 +85,9 @@ workspace-backend/             ← feature/backend branch
     │ (core 1) │    │ (core 2) │    │ (core 3) │
     └──────────┘    └──────────┘    └──────────┘
 
-Communication via shared files:
-/tmp/claude-wt-messages/   ← Messages between agents
-/tmp/claude-wt-tasks/      ← Task assignments
-/tmp/cwt-workers-list.txt  ← Active workers
+Communication via shared state file:
+  Project mode:  .cwt/state.json (isolated per project)
+  Legacy mode:   /tmp/claude-wt-state.json (global)
 ```
 
 ## Installation
@@ -105,11 +104,79 @@ This installs to `~/.local/bin/`:
 - `wt-task` - Task assignment
 - `wt-init` - Worktree creation
 
-## Initial Setup (Existing Project)
+## Project-Based Setup (Recommended)
 
-### Step 1: Create Worktrees
+The recommended way to use CWT is with a **project folder** that contains all repos/worktrees:
 
-From your project root:
+```
+~/projects/my-project/        # Project folder (not a repo)
+├── .cwt/                     # CWT state (isolated)
+│   ├── config.json
+│   └── state.json
+├── main/                     # Coordinator (cloned repo)
+│   └── .git/
+├── feature-frontend/         # Worker (worktree)
+│   └── .git → ../main/.git
+├── feature-backend/          # Worker (worktree)
+│   └── .git → ../main/.git
+└── docs/                     # Worker (separate repo)
+    └── .git/
+```
+
+### Step 1: Create Project
+
+```bash
+mkdir -p ~/projects/my-project
+cd ~/projects/my-project
+cwt init --name my-project
+```
+
+### Step 2: Clone Repo and Create Worktrees
+
+```bash
+# Clone main repo
+git clone git@github.com:user/repo.git main
+cd main
+
+# Create worktrees INSIDE project folder
+git worktree add ../feature-frontend -b feature/frontend
+git worktree add ../feature-backend -b feature/backend
+
+# Optional: add separate repo
+cd ..
+git clone git@github.com:user/docs.git docs
+```
+
+### Step 3: Start Session
+
+```bash
+cd ~/projects/my-project
+cwt    # Auto-detects repos and worktrees
+
+# Or specify workers:
+cwt feature-frontend feature-backend docs
+```
+
+### Multi-Project Support
+
+Each project has its own tmux session and isolated state:
+
+```bash
+# Terminal 1: Project A
+cd ~/projects/project-a && cwt
+# Session: cwt-project-a
+
+# Terminal 2: Project B
+cd ~/projects/project-b && cwt
+# Session: cwt-project-b
+
+# List all CWT sessions
+cwt --list-all
+```
+
+## Legacy Setup (Worktrees as Siblings)
+
+For existing setups where worktrees are siblings of the main repo:
 
 ```bash
 cd my-existing-project
@@ -127,7 +194,7 @@ wt-init frontend backend security
 # Creates: workspace-frontend/, workspace-backend/, workspace-security/
 ```
 
-### Step 2: Start the Session
+Start the session:
 
 ```bash
 cwt frontend backend security
@@ -138,6 +205,8 @@ Or let CWT detect worktrees automatically:
 ```bash
 cwt   # Detects existing worktrees
 ```
+
+> Note: Legacy mode uses global state in `/tmp/`. For isolated multi-project work, use the project-based setup above.
 
 ## Permissionless Mode (Critical)
 
@@ -217,20 +286,28 @@ cat, head, tail, grep, ls, find
 
 ## Usage
 
+### Initialize Project
+
+```bash
+cwt init                    # Initialize in current directory
+cwt init --name my-project  # With custom name
+```
+
 ### Start New Session
 
 ```bash
 cwt frontend backend security    # Named workers
 cwt -c frontend backend          # Resume previous Claude sessions (--continue)
-cwt                              # Auto-detect worktrees
+cwt                              # Auto-detect repos/worktrees
 ```
 
 ### Manage Session
 
 ```bash
-cwt --list      # List active sessions
+cwt --list      # List session for current project
+cwt --list-all  # List ALL CWT sessions (all projects)
 cwt --status    # Show windows
-cwt --kill      # End session
+cwt --kill      # End session for current project
 cwt             # Reconnect to existing session
 ```
 

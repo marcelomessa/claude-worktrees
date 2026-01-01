@@ -9,62 +9,90 @@
 #   wt-msg status
 # =============================================================================
 
-STATE_FILE="/tmp/claude-wt-state.json"
 WORKER_ID="${CLAUDE_WORKER_ID:-$(basename "$PWD")}"
 
-# No colors - cleaner terminal
-GREEN=''
-YELLOW=''
-BLUE=''
-RED=''
-NC=''
+# Detectar .cwt/ subindo a árvore de diretórios
+find_cwt_root() {
+  # 1. Variável de ambiente
+  if [[ -n "$CWT_PROJECT_ROOT" && -d "$CWT_PROJECT_ROOT/.cwt" ]]; then
+    echo "$CWT_PROJECT_ROOT"
+    return 0
+  fi
+
+  # 2. Subir árvore
+  local dir="$PWD"
+  while [[ "$dir" != "/" ]]; do
+    if [[ -d "$dir/.cwt" ]]; then
+      echo "$dir"
+      return 0
+    fi
+    dir=$(dirname "$dir")
+  done
+
+  return 1
+}
+
+# Determinar arquivo de estado
+get_state_file() {
+  local cwt_root=$(find_cwt_root)
+  if [[ -n "$cwt_root" ]]; then
+    echo "$cwt_root/.cwt/state.json"
+  else
+    echo "/tmp/claude-wt-state.json"
+  fi
+}
+
+STATE_FILE=$(get_state_file)
 
 # Initialize state file if needed
 init_state() {
-  [[ ! -f "$STATE_FILE" ]] && echo '{"workers":{},"messages":[]}' > "$STATE_FILE"
+  if [[ ! -f "$STATE_FILE" ]]; then
+    mkdir -p "$(dirname "$STATE_FILE")"
+    echo '{"workers":{},"messages":[]}' > "$STATE_FILE"
+  fi
 }
 
 case "${1:-help}" in
   send)
     TARGET="$2"
     MESSAGE="$3"
-    [[ -z "$TARGET" || -z "$MESSAGE" ]] && echo -e "${RED}Uso: wt-msg send <worker> \"msg\"${NC}" && exit 1
+    [[ -z "$TARGET" || -z "$MESSAGE" ]] && echo "Uso: wt-msg send <worker> \"msg\"" && exit 1
 
     init_state
     TIMESTAMP=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
     jq ".messages += [{\"to\":\"$TARGET\",\"from\":\"$WORKER_ID\",\"content\":\"$MESSAGE\",\"timestamp\":\"$TIMESTAMP\",\"read\":false}]" \
       "$STATE_FILE" > "$STATE_FILE.tmp" && mv "$STATE_FILE.tmp" "$STATE_FILE"
-    echo -e "${GREEN}Mensagem enviada para $TARGET${NC}"
+    echo "Mensagem enviada para $TARGET"
     ;;
 
   broadcast)
     MESSAGE="$2"
-    [[ -z "$MESSAGE" ]] && echo -e "${RED}Uso: wt-msg broadcast \"msg\"${NC}" && exit 1
+    [[ -z "$MESSAGE" ]] && echo "Uso: wt-msg broadcast \"msg\"" && exit 1
 
     init_state
     TIMESTAMP=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
     jq ".messages += [{\"to\":\"all\",\"from\":\"$WORKER_ID\",\"content\":\"$MESSAGE\",\"timestamp\":\"$TIMESTAMP\",\"read\":false}]" \
       "$STATE_FILE" > "$STATE_FILE.tmp" && mv "$STATE_FILE.tmp" "$STATE_FILE"
-    echo -e "${GREEN}Broadcast enviado${NC}"
+    echo "Broadcast enviado"
     ;;
 
   check)
     init_state
     count=$(jq "[.messages[] | select(.to == \"$WORKER_ID\" or .to == \"all\") | select(.read == false)] | length" "$STATE_FILE")
     if [[ "$count" -gt 0 ]]; then
-      echo -e "${YELLOW}$count mensagem(ns) pendente(s)${NC}"
+      echo "$count mensagem(ns) pendente(s)"
       exit 0
     else
-      echo -e "${GREEN}Nenhuma mensagem${NC}"
+      echo "Nenhuma mensagem"
       exit 1
     fi
     ;;
 
   read)
     init_state
-    echo -e "${BLUE}═══════════════════════════════════════${NC}"
-    echo -e "${BLUE} Mensagens para: $WORKER_ID${NC}"
-    echo -e "${BLUE}═══════════════════════════════════════${NC}"
+    echo "═══════════════════════════════════════"
+    echo " Mensagens para: $WORKER_ID"
+    echo "═══════════════════════════════════════"
 
     jq -r ".messages[] | select(.to == \"$WORKER_ID\" or .to == \"all\") | select(.read == false) | \"\\nDe: \(.from)\\nTempo: \(.timestamp)\\n\\n\(.content)\\n───────────────────────────────────────\"" "$STATE_FILE"
 
@@ -74,26 +102,37 @@ case "${1:-help}" in
 
   status)
     init_state
-    echo -e "${BLUE}═══════════════════════════════════════${NC}"
-    echo -e "${BLUE} Status do Worktrees${NC}"
-    echo -e "${BLUE}═══════════════════════════════════════${NC}"
+    echo "═══════════════════════════════════════"
+    echo " Status do Worktrees"
+    echo "═══════════════════════════════════════"
 
-    if [[ -f "/tmp/claude-wt-config.json" ]]; then
+    # Mostrar projeto se em modo projeto
+    cwt_root=$(find_cwt_root)
+    if [[ -n "$cwt_root" ]]; then
+      echo ""
+      echo "Projeto: $(basename "$cwt_root")"
+      echo "Config: $cwt_root/.cwt/config.json"
+      if [[ -f "$cwt_root/.cwt/config.json" ]]; then
+        echo "Nome: $(jq -r '.name // "?"' "$cwt_root/.cwt/config.json")"
+      fi
+    fi
+
+    # Config legado
+    if [[ -f "/tmp/claude-wt-config.json" && -z "$cwt_root" ]]; then
       echo ""
       echo "Repo: $(jq -r '.repo' /tmp/claude-wt-config.json)"
       echo "Base: $(jq -r '.base' /tmp/claude-wt-config.json)"
-      echo "Tipo: $(jq -r '.type' /tmp/claude-wt-config.json)"
-      echo "Workers: $(jq -r '.workers | join(", ")' /tmp/claude-wt-config.json)"
     fi
 
     echo ""
+    echo "State: $STATE_FILE"
     total=$(jq '.messages | length' "$STATE_FILE")
     unread=$(jq '[.messages[] | select(.read == false)] | length' "$STATE_FILE")
     echo "Mensagens: $unread pendentes / $total total"
     ;;
 
   help|*)
-    echo -e "${BLUE}WT-MSG - Mensagens entre agentes${NC}"
+    echo "WT-MSG - Mensagens entre agentes"
     echo ""
     echo "Comandos:"
     echo "  send <worker> \"msg\"   Envia mensagem"
@@ -103,5 +142,6 @@ case "${1:-help}" in
     echo "  status                 Status do wt"
     echo ""
     echo "Worker atual: $WORKER_ID"
+    echo "State file: $STATE_FILE"
     ;;
 esac

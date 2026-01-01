@@ -5,12 +5,43 @@
 # Versão tmux do pulser original
 # =============================================================================
 
-SESSION_NAME="${SESSION_NAME:-cwt}"
+# Detectar .cwt/ subindo a árvore de diretórios
+find_cwt_root() {
+  # 1. Variável de ambiente
+  if [[ -n "$CWT_PROJECT_ROOT" && -d "$CWT_PROJECT_ROOT/.cwt" ]]; then
+    echo "$CWT_PROJECT_ROOT"
+    return 0
+  fi
+
+  # 2. Subir árvore
+  local dir="$PWD"
+  while [[ "$dir" != "/" ]]; do
+    if [[ -d "$dir/.cwt" ]]; then
+      echo "$dir"
+      return 0
+    fi
+    dir=$(dirname "$dir")
+  done
+
+  return 1
+}
+
+# Determinar arquivos de estado
+CWT_ROOT=$(find_cwt_root)
+if [[ -n "$CWT_ROOT" ]]; then
+  PROJECT_NAME=$(basename "$CWT_ROOT")
+  SESSION_NAME="${SESSION_NAME:-cwt-$PROJECT_NAME}"
+  STATE_FILE="$CWT_ROOT/.cwt/state.json"
+  WORKSPACES_FILE="$CWT_ROOT/.cwt/workers.txt"
+else
+  SESSION_NAME="${SESSION_NAME:-cwt}"
+  STATE_FILE="/tmp/claude-wt-state.json"
+  WORKSPACES_FILE="/tmp/cwt-workers-list.txt"
+fi
+
 INTERVAL="${PULSER_INTERVAL:-30}"
 IDLE_THRESHOLD="${IDLE_THRESHOLD:-60}"
 LOG_FILE="/tmp/cwt-pulser.log"
-WORKSPACES_FILE="/tmp/cwt-workers-list.txt"
-STATE_FILE="$HOME/repos/mrmessa-claude-code/claude-worktrees/state.json"
 
 log() {
   echo "[$(date '+%H:%M:%S')] $*" >> "$LOG_FILE"
