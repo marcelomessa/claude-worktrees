@@ -131,17 +131,23 @@ check_window() {
     return 0
   fi
 
+  # Threshold diferente para coordinator (operado por humano) vs workers (autônomos)
+  local threshold=$IDLE_THRESHOLD
+  if [[ "$window_name" == "coordinator" ]]; then
+    # Coordinator: só intervir após 5 minutos de inatividade, e APENAS se houver mensagens
+    threshold="${COORD_IDLE_THRESHOLD:-300}"
+  fi
+
   # Se está esperando input e idle por muito tempo
-  if [[ "$waiting_input" == "true" && $idle_secs -gt $IDLE_THRESHOLD ]]; then
+  if [[ "$waiting_input" == "true" && $idle_secs -gt $threshold ]]; then
     local cmd=""
 
     if [[ "$window_name" == "coordinator" ]]; then
-      # Coordinator: verificar mensagens ou continuar trabalho
+      # Coordinator: SÓ notificar se houver mensagens pendentes dos workers
       if [[ "$has_msgs" == "true" ]]; then
         cmd="wt-msg read"
-      else
-        cmd="continue"
       fi
+      # NÃO enviar "continue" para coordinator - deixar humano decidir
     else
       # Worker: verificar tarefas ou reportar status
       if [[ "$has_msgs" == "true" ]]; then

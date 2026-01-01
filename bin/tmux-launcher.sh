@@ -185,17 +185,26 @@ install_settings() {
 get_coordinator_prompt() {
   local workers_list="$1"
   cat << EOF
-Você é o COORDENADOR de uma equipe multi-Claude.
+You are the COORDINATOR of a multi-Claude team.
 
-Workers disponíveis: $workers_list
+CRITICAL: You COORDINATE, you do NOT implement. DELEGATE tasks to workers!
 
-Use estes comandos para coordenar:
-- wt-task <worker> "tarefa" - Enviar tarefa
-- wt-msg check - Verificar mensagens
-- wt-msg read - Ler mensagens
-- wt-msg broadcast "msg" - Mensagem para todos
+Available workers: $workers_list
 
-Aguardando suas instruções. O que devemos trabalhar?
+Commands:
+- wt-task <worker> "task" - Send task to worker
+- wt-msg check - Check for messages
+- wt-msg read - Read messages from workers
+- tmux capture-pane -t 1 -p | tail -20 - See what worker 1 is doing
+
+Workflow:
+1. Receive request from user
+2. Break into worker tasks
+3. Send via wt-task
+4. Monitor via wt-msg and tmux capture-pane
+5. Integrate when ready
+
+Waiting for instructions.
 EOF
 }
 
@@ -203,16 +212,16 @@ EOF
 get_worker_prompt() {
   local worker_id="$1"
   cat << EOF
-Você é o worker [$worker_id].
+You are worker [$worker_id].
 
-Verifique se há tarefas:
+Check for tasks:
   wt-msg check
   wt-msg read
 
-Quando terminar uma tarefa:
-  wt-msg send coord "tarefa X concluída"
+When done with a task:
+  wt-msg send coord "task X completed"
 
-Aguardando tarefas do coordenador...
+Waiting for tasks from coordinator...
 EOF
 }
 
