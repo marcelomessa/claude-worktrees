@@ -60,21 +60,19 @@ fi
 # FUNÇÕES DE DETECÇÃO - MODO PROJETO
 # ============================================================================
 
-# Detectar diretório do coordenador (main/ ou primeiro com .git/)
+# Detectar diretório do coordenador
 detect_coordinator_dir() {
   # 1. Configurado em .cwt/config.json
   if [[ -f "$PROJECT_ROOT/.cwt/config.json" ]]; then
     local coord=$(jq -r '.coordinator // empty' "$PROJECT_ROOT/.cwt/config.json" 2>/dev/null)
-    [[ -n "$coord" && -d "$PROJECT_ROOT/$coord" ]] && echo "$coord" && return
+    [[ -n "$coord" && "$coord" != "null" && -d "$PROJECT_ROOT/$coord" ]] && echo "$coord" && return
   fi
 
-  # 2. Pasta chamada "main"
-  [[ -d "$PROJECT_ROOT/main" ]] && echo "main" && return
-
-  # 3. Primeira pasta com .git/ completo (não worktree)
+  # 2. Primeira pasta com .git/ completo (repo, não worktree)
   for dir in "$PROJECT_ROOT"/*/; do
     local name=$(basename "$dir")
     [[ "$name" == ".cwt" ]] && continue
+    # .git/ como diretório = repo principal
     if [[ -d "$dir/.git" ]]; then
       echo "$name"
       return
@@ -82,19 +80,22 @@ detect_coordinator_dir() {
   done
 }
 
-# Detectar workers (worktrees + repos separados)
+# Detectar workers (APENAS worktrees do coordenador, não outros repos)
 detect_workers_project() {
   local coord_dir=$(detect_coordinator_dir)
+  local coord_path="$PROJECT_ROOT/$coord_dir"
 
-  for dir in "$PROJECT_ROOT"/*/; do
-    local name=$(basename "$dir")
+  # Se não tem coordenador, não há workers
+  [[ -z "$coord_dir" || ! -d "$coord_path" ]] && return
 
-    # Pular coordenador e .cwt
-    [[ "$name" == "$coord_dir" || "$name" == ".cwt" ]] && continue
+  # Listar worktrees do coordenador
+  git -C "$coord_path" worktree list --porcelain 2>/dev/null | grep "^worktree " | cut -d' ' -f2- | while read -r wt_path; do
+    # Pular o próprio coordenador
+    [[ "$wt_path" == "$coord_path" ]] && continue
 
-    # Verificar se é repo ou worktree
-    if [[ -d "$dir/.git" ]] || [[ -f "$dir/.git" ]]; then
-      echo "$name"
+    # Verificar se está dentro do PROJECT_ROOT
+    if [[ "$wt_path" == "$PROJECT_ROOT"/* ]]; then
+      basename "$wt_path"
     fi
   done
 }
@@ -142,6 +143,35 @@ install_claude_md() {
     # Copiar e substituir WORKER_ID
     sed "s/WORKER_ID/$worker_id/g" "$template" > "$target_dir/CLAUDE.md"
     echo "   📄 CLAUDE.md instalado em $target_dir"
+  fi
+}
+
+# Instalar settings.json com permissões e hooks
+install_settings() {
+  local target_dir="$1"
+  local role="$2"  # "coordinator" ou "worker"
+  local worker_id="$3"
+
+  local claude_dir="$target_dir/.claude"
+  local settings_file="$claude_dir/settings.json"
+
+  # Criar diretório .claude se não existir
+  mkdir -p "$claude_dir"
+
+  # Escolher template
+  local template=""
+  if [[ "$role" == "coordinator" ]]; then
+    template="$CWT_TEMPLATES_DIR/settings.coord.json"
+  else
+    template="$CWT_TEMPLATES_DIR/settings.worker.json"
+  fi
+
+  if [[ -f "$template" ]]; then
+    # Copiar e substituir WORKER_NAME
+    sed "s/WORKER_NAME/$worker_id/g" "$template" > "$settings_file"
+    echo "   ⚙️  settings.json instalado em $claude_dir"
+  else
+    echo "   ⚠️  Template não encontrado: $template"
   fi
 }
 
@@ -263,6 +293,53 @@ mkdir -p "$LOG_DIR"
 echo "📝 Logs: $LOG_DIR/cwt-*-$TIMESTAMP.log"
 
 # ============================================================================
+# INICIAR DAEMON DE COMUNICAÇÃO
+# ============================================================================
+
+CWT_DAEMON_DIR="$(cd "$CWT_BIN_DIR/../daemon" && pwd)"
+DAEMON_LOG="$LOG_DIR/cwt-daemon-$TIMESTAMP.log"
+DAEMON_PID_FILE="$PROJECT_ROOT/.cwt/daemon.pid"
+CWT_SOCKET="$PROJECT_ROOT/.cwt/cwt.sock"
+
+# Parar daemon anterior se existir
+if [[ -f "$DAEMON_PID_FILE" ]]; then
+  OLD_PID=$(cat "$DAEMON_PID_FILE" 2>/dev/null)
+  if [[ -n "$OLD_PID" ]] && kill -0 "$OLD_PID" 2>/dev/null; then
+    echo "🔄 Parando daemon anterior (PID: $OLD_PID)..."
+    kill "$OLD_PID" 2>/dev/null
+    sleep 1
+  fi
+  rm -f "$DAEMON_PID_FILE"
+fi
+
+# Remover socket antigo
+rm -f "$CWT_SOCKET"
+
+# Iniciar daemon
+if [[ -f "$CWT_DAEMON_DIR/index.js" ]] && command -v node &>/dev/null; then
+  echo "🚀 Iniciando daemon de comunicação..."
+  nohup node "$CWT_DAEMON_DIR/index.js" "$PROJECT_ROOT" > "$DAEMON_LOG" 2>&1 &
+  DAEMON_PID=$!
+  sleep 1
+
+  # Verificar se iniciou corretamente
+  if kill -0 "$DAEMON_PID" 2>/dev/null && [[ -S "$CWT_SOCKET" ]]; then
+    echo "   ✅ Daemon rodando (PID: $DAEMON_PID)"
+    echo "   📡 Socket: $CWT_SOCKET"
+  else
+    echo "   ⚠️  Daemon pode não ter iniciado corretamente"
+    echo "   📄 Log: $DAEMON_LOG"
+  fi
+else
+  echo "⚠️  Daemon não disponível (node não encontrado ou daemon/index.js ausente)"
+  echo "   Comunicação em tempo real desabilitada"
+fi
+
+# Exportar variáveis para os workers
+export CWT_SOCKET
+export CWT_PROJECT_ROOT="$PROJECT_ROOT"
+
+# ============================================================================
 # CRIAR SESSÃO TMUX
 # ============================================================================
 
@@ -293,6 +370,8 @@ install_claude_md "$COORD_DIR" "coordinator" "coordinator"
 tmux send-keys -t "$SESSION_NAME:0" "export CLAUDE_WORKER_ID='coordinator'" Enter
 sleep 0.2
 tmux send-keys -t "$SESSION_NAME:0" "export CWT_PROJECT_ROOT='$PROJECT_ROOT'" Enter
+sleep 0.2
+tmux send-keys -t "$SESSION_NAME:0" "export CWT_SOCKET='$CWT_SOCKET'" Enter
 sleep 0.2
 tmux send-keys -t "$SESSION_NAME:0" "cd '$COORD_DIR'" Enter
 sleep 0.2
@@ -350,6 +429,8 @@ for workspace in "${WORKSPACES[@]}"; do
   tmux send-keys -t "$SESSION_NAME:$WINDOW_NUM" "export CLAUDE_WORKER_ID='$workspace'" Enter
   sleep 0.2
   tmux send-keys -t "$SESSION_NAME:$WINDOW_NUM" "export CWT_PROJECT_ROOT='$PROJECT_ROOT'" Enter
+  sleep 0.2
+  tmux send-keys -t "$SESSION_NAME:$WINDOW_NUM" "export CWT_SOCKET='$CWT_SOCKET'" Enter
   sleep 0.2
   tmux send-keys -t "$SESSION_NAME:$WINDOW_NUM" "cd '$WORKSPACE_DIR'" Enter
   sleep 0.2

@@ -6,6 +6,7 @@
 #   wt-msg send <worker> "message"
 #   wt-msg broadcast "message"
 #   wt-msg check
+#   wt-msg read
 #   wt-msg status
 # =============================================================================
 
@@ -32,11 +33,52 @@ find_cwt_root() {
   return 1
 }
 
-# Determinar arquivo de estado
+CWT_ROOT=$(find_cwt_root)
+
+# Encontrar socket do daemon
+find_socket() {
+  # 1. Variável de ambiente
+  if [[ -n "$CWT_SOCKET" && -S "$CWT_SOCKET" ]]; then
+    echo "$CWT_SOCKET"
+    return 0
+  fi
+
+  # 2. No .cwt do projeto
+  if [[ -n "$CWT_ROOT" && -S "$CWT_ROOT/.cwt/cwt.sock" ]]; then
+    echo "$CWT_ROOT/.cwt/cwt.sock"
+    return 0
+  fi
+
+  return 1
+}
+
+SOCKET=$(find_socket)
+
+# Verificar se daemon está disponível
+daemon_available() {
+  [[ -n "$SOCKET" && -S "$SOCKET" ]] && return 0
+  return 1
+}
+
+# Enviar request ao daemon
+send_request() {
+  echo "$1" | nc -w 2 -U "$SOCKET" 2>/dev/null
+}
+
+# Registrar e enviar
+send_as_worker() {
+  local request="$1"
+  (
+    echo "{\"method\":\"register\",\"params\":{\"id\":\"$WORKER_ID\"},\"id\":0}"
+    sleep 0.1
+    echo "$request"
+  ) | nc -w 2 -U "$SOCKET" 2>/dev/null | tail -1
+}
+
+# === FALLBACK: File-based state ===
 get_state_file() {
-  local cwt_root=$(find_cwt_root)
-  if [[ -n "$cwt_root" ]]; then
-    echo "$cwt_root/.cwt/state.json"
+  if [[ -n "$CWT_ROOT" ]]; then
+    echo "$CWT_ROOT/.cwt/state.json"
   else
     echo "/tmp/claude-wt-state.json"
   fi
@@ -44,7 +86,6 @@ get_state_file() {
 
 STATE_FILE=$(get_state_file)
 
-# Initialize state file if needed
 init_state() {
   if [[ ! -f "$STATE_FILE" ]]; then
     mkdir -p "$(dirname "$STATE_FILE")"
@@ -52,83 +93,152 @@ init_state() {
   fi
 }
 
+# =============================================================================
+# COMMANDS
+# =============================================================================
+
 case "${1:-help}" in
   send)
     TARGET="$2"
     MESSAGE="$3"
     [[ -z "$TARGET" || -z "$MESSAGE" ]] && echo "Uso: wt-msg send <worker> \"msg\"" && exit 1
 
-    init_state
-    TIMESTAMP=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
-    jq ".messages += [{\"to\":\"$TARGET\",\"from\":\"$WORKER_ID\",\"content\":\"$MESSAGE\",\"timestamp\":\"$TIMESTAMP\",\"read\":false}]" \
-      "$STATE_FILE" > "$STATE_FILE.tmp" && mv "$STATE_FILE.tmp" "$STATE_FILE"
-    echo "Mensagem enviada para $TARGET"
+    if daemon_available; then
+      # Usar daemon
+      RESPONSE=$(send_as_worker "{\"method\":\"send_message\",\"params\":{\"to\":\"$TARGET\",\"content\":\"$MESSAGE\",\"type\":\"direct\"},\"id\":1}")
+      echo "📨 Mensagem enviada para $TARGET (via daemon)"
+    else
+      # Fallback: file-based
+      init_state
+      TIMESTAMP=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+      jq ".messages += [{\"to\":\"$TARGET\",\"from\":\"$WORKER_ID\",\"content\":\"$MESSAGE\",\"timestamp\":\"$TIMESTAMP\",\"read\":false}]" \
+        "$STATE_FILE" > "$STATE_FILE.tmp" && mv "$STATE_FILE.tmp" "$STATE_FILE"
+      echo "📨 Mensagem enviada para $TARGET"
+    fi
     ;;
 
   broadcast)
     MESSAGE="$2"
     [[ -z "$MESSAGE" ]] && echo "Uso: wt-msg broadcast \"msg\"" && exit 1
 
-    init_state
-    TIMESTAMP=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
-    jq ".messages += [{\"to\":\"all\",\"from\":\"$WORKER_ID\",\"content\":\"$MESSAGE\",\"timestamp\":\"$TIMESTAMP\",\"read\":false}]" \
-      "$STATE_FILE" > "$STATE_FILE.tmp" && mv "$STATE_FILE.tmp" "$STATE_FILE"
-    echo "Broadcast enviado"
+    if daemon_available; then
+      # Usar daemon
+      RESPONSE=$(send_as_worker "{\"method\":\"broadcast\",\"params\":{\"data\":{\"message\":\"$MESSAGE\",\"from\":\"$WORKER_ID\"}},\"id\":1}")
+      echo "📢 Broadcast enviado (via daemon)"
+    else
+      # Fallback: file-based
+      init_state
+      TIMESTAMP=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+      jq ".messages += [{\"to\":\"all\",\"from\":\"$WORKER_ID\",\"content\":\"$MESSAGE\",\"timestamp\":\"$TIMESTAMP\",\"read\":false}]" \
+        "$STATE_FILE" > "$STATE_FILE.tmp" && mv "$STATE_FILE.tmp" "$STATE_FILE"
+      echo "📢 Broadcast enviado"
+    fi
     ;;
 
   check)
-    init_state
-    count=$(jq "[.messages[] | select(.to == \"$WORKER_ID\" or .to == \"all\") | select(.read == false)] | length" "$STATE_FILE")
+    if daemon_available; then
+      # Usar daemon
+      RESPONSE=$(send_as_worker '{"method":"get_messages","id":1}')
+      count=$(echo "$RESPONSE" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    msgs = [m for m in data.get('result', []) if not m.get('read', False)]
+    print(len(msgs))
+except:
+    print(0)
+" 2>/dev/null || echo 0)
+    else
+      # Fallback: file-based
+      init_state
+      count=$(jq "[.messages[] | select(.to == \"$WORKER_ID\" or .to == \"all\") | select(.read == false)] | length" "$STATE_FILE")
+    fi
+
     if [[ "$count" -gt 0 ]]; then
-      echo "$count mensagem(ns) pendente(s)"
+      echo "📬 $count mensagem(ns) pendente(s)"
       exit 0
     else
-      echo "Nenhuma mensagem"
+      echo "📭 Nenhuma mensagem"
       exit 1
     fi
     ;;
 
   read)
-    init_state
     echo "═══════════════════════════════════════"
     echo " Mensagens para: $WORKER_ID"
     echo "═══════════════════════════════════════"
 
-    jq -r ".messages[] | select(.to == \"$WORKER_ID\" or .to == \"all\") | select(.read == false) | \"\\nDe: \(.from)\\nTempo: \(.timestamp)\\n\\n\(.content)\\n───────────────────────────────────────\"" "$STATE_FILE"
-
-    # Mark as read
-    jq "(.messages[] | select(.to == \"$WORKER_ID\" or .to == \"all\")).read = true" "$STATE_FILE" > "$STATE_FILE.tmp" && mv "$STATE_FILE.tmp" "$STATE_FILE"
+    if daemon_available; then
+      # Usar daemon
+      RESPONSE=$(send_as_worker '{"method":"get_messages","id":1}')
+      echo "$RESPONSE" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    msgs = [m for m in data.get('result', []) if not m.get('read', False)]
+    if not msgs:
+        print('Nenhuma mensagem pendente')
+    else:
+        for m in msgs:
+            print(f\"\nDe: {m.get('from', '?')}\")
+            print(f\"Tempo: {m.get('timestamp', '?')}\")
+            print()
+            print(m.get('content', ''))
+            print('───────────────────────────────────────')
+except Exception as e:
+    print(f'Erro: {e}')
+" 2>/dev/null
+      # Mark as read - daemon doesn't have this method yet, so we'll skip for now
+    else
+      # Fallback: file-based
+      init_state
+      jq -r ".messages[] | select(.to == \"$WORKER_ID\" or .to == \"all\") | select(.read == false) | \"\\nDe: \(.from)\\nTempo: \(.timestamp)\\n\\n\(.content)\\n───────────────────────────────────────\"" "$STATE_FILE"
+      # Mark as read
+      jq "(.messages[] | select(.to == \"$WORKER_ID\" or .to == \"all\")).read = true" "$STATE_FILE" > "$STATE_FILE.tmp" && mv "$STATE_FILE.tmp" "$STATE_FILE"
+    fi
     ;;
 
   status)
-    init_state
     echo "═══════════════════════════════════════"
-    echo " Status do Worktrees"
+    echo " Status CWT"
     echo "═══════════════════════════════════════"
 
-    # Mostrar projeto se em modo projeto
-    cwt_root=$(find_cwt_root)
-    if [[ -n "$cwt_root" ]]; then
+    # Mostrar projeto
+    if [[ -n "$CWT_ROOT" ]]; then
       echo ""
-      echo "Projeto: $(basename "$cwt_root")"
-      echo "Config: $cwt_root/.cwt/config.json"
-      if [[ -f "$cwt_root/.cwt/config.json" ]]; then
-        echo "Nome: $(jq -r '.name // "?"' "$cwt_root/.cwt/config.json")"
+      echo "Projeto: $(basename "$CWT_ROOT")"
+      if [[ -f "$CWT_ROOT/.cwt/config.json" ]]; then
+        echo "Nome: $(jq -r '.name // "?"' "$CWT_ROOT/.cwt/config.json")"
+        echo "Coord: $(jq -r '.coordinator // "?"' "$CWT_ROOT/.cwt/config.json")"
       fi
     fi
 
-    # Config legado
-    if [[ -f "/tmp/claude-wt-config.json" && -z "$cwt_root" ]]; then
-      echo ""
-      echo "Repo: $(jq -r '.repo' /tmp/claude-wt-config.json)"
-      echo "Base: $(jq -r '.base' /tmp/claude-wt-config.json)"
-    fi
-
     echo ""
-    echo "State: $STATE_FILE"
-    total=$(jq '.messages | length' "$STATE_FILE")
-    unread=$(jq '[.messages[] | select(.read == false)] | length' "$STATE_FILE")
-    echo "Mensagens: $unread pendentes / $total total"
+    echo "Worker: $WORKER_ID"
+
+    # Daemon status
+    if daemon_available; then
+      echo "Daemon: ✅ Online ($SOCKET)"
+
+      # Get stats
+      STATS=$(send_request '{"method":"get_stats","id":1}')
+      echo "$STATS" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    s = data.get('result', {})
+    print(f\"Workers: {s.get('workers', 0)}\")
+    print(f\"Votações: {s.get('activeVotes', 0)}\")
+except: pass
+" 2>/dev/null
+    else
+      echo "Daemon: ❌ Offline"
+      init_state
+      echo "State: $STATE_FILE"
+      total=$(jq '.messages | length' "$STATE_FILE")
+      unread=$(jq '[.messages[] | select(.read == false)] | length' "$STATE_FILE")
+      echo "Mensagens: $unread pendentes / $total total"
+    fi
     ;;
 
   help|*)
@@ -141,7 +251,11 @@ case "${1:-help}" in
     echo "  read                   Lê mensagens"
     echo "  status                 Status do wt"
     echo ""
-    echo "Worker atual: $WORKER_ID"
-    echo "State file: $STATE_FILE"
+    echo "Worker: $WORKER_ID"
+    if daemon_available; then
+      echo "Daemon: ✅ $SOCKET"
+    else
+      echo "Daemon: ❌ Offline (usando file-based)"
+    fi
     ;;
 esac

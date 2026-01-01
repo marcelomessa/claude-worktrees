@@ -59,7 +59,10 @@ CWT - Claude WorkTrees (tmux)
 Uso: cwt [COMANDO] [OPÇÕES] [worker1] [worker2] ...
 
 Comandos:
-  init [--name NAME]   Inicializa projeto CWT no diretório atual
+  init [OPÇÕES]        Inicializa projeto CWT
+    --name, -n NAME    Nome do projeto
+    --repo, -r REPO    Diretório do repo coordenador
+  update               Atualiza settings/hooks do projeto
 
 Opções:
   -h, --help       Mostra esta ajuda
@@ -73,37 +76,116 @@ Opções:
 Estrutura de Projeto:
   ~/projects/meu-projeto/
   ├── .cwt/              # Criado por 'cwt init'
-  ├── main/              # Coordenador (clone do repo)
-  ├── feature-a/         # Worker (worktree)
-  └── feature-b/         # Worker (worktree ou repo)
+  ├── meu-repo/          # Coordenador (repo principal)
+  ├── workspace-front/   # Worker (worktree)
+  └── workspace-back/    # Worker (worktree)
 
-Exemplos:
-  cwt init --name meu-projeto    # Inicializar projeto
-  cwt feature-a feature-b        # Iniciar com workers
-  cwt                            # Detectar repos automaticamente
+Fluxo de Trabalho:
+  # Opção 1: De dentro do repo
+  cd meu-repo/
+  cwt init                    # Detecta repo automaticamente
+  wt-init front back          # Cria worktrees
+
+  # Opção 2: De pasta de trabalho
+  cd minha-pasta/
+  git clone <url> meu-repo
+  cwt init --repo meu-repo    # Especifica coordenador
+  cd meu-repo && wt-init front back
+
+  # Iniciar sessão
+  cwt                         # Detecta coord e worktrees
 
 Atalhos tmux:
   Ctrl+b n       Próxima window
   Ctrl+b p       Window anterior
   Ctrl+b 0-9     Ir para window N
   Ctrl+b d       Desconectar (continua rodando)
-
-Mouse/Trackpad:
-  Scroll         Navega pelo histórico (scrollback)
-  Click          Seleciona pane/window
-  q ou Esc       Sai do modo scroll
 EOF
+}
+
+# Comando update - atualiza projeto existente com nova versão
+cwt_update() {
+  local cwt_root=$(find_cwt_root)
+  local install_dir="$HOME/.claude-worktrees"
+
+  if [[ -z "$cwt_root" ]]; then
+    echo "❌ Nenhum projeto CWT encontrado"
+    echo "   Execute 'cwt init' primeiro"
+    exit 1
+  fi
+
+  echo "═══════════════════════════════════════"
+  echo " CWT Update: $(basename "$cwt_root")"
+  echo "═══════════════════════════════════════"
+
+  # Ler config
+  local config_file="$cwt_root/.cwt/config.json"
+  local coordinator=$(jq -r '.coordinator // empty' "$config_file" 2>/dev/null)
+
+  # Atualizar coordinator
+  if [[ -n "$coordinator" && -d "$cwt_root/$coordinator" ]]; then
+    echo ""
+    echo "📦 Coordinator: $coordinator"
+    local claude_dir="$cwt_root/$coordinator/.claude"
+    mkdir -p "$claude_dir"
+
+    # settings.json
+    if [[ -f "$install_dir/templates/settings.coord.json" ]]; then
+      cp "$install_dir/templates/settings.coord.json" "$claude_dir/settings.json"
+      echo "   ✅ settings.json atualizado"
+    fi
+
+    # Symlinks para hooks
+    ln -sf "$install_dir/hooks/wt-check.sh" "$claude_dir/wt-check.sh"
+    ln -sf "$install_dir/hooks/wt-sync.sh" "$claude_dir/wt-sync.sh"
+    echo "   ✅ hooks symlinks atualizados"
+  fi
+
+  # Atualizar workers
+  local workers_file="$cwt_root/.cwt/workers.txt"
+  if [[ -f "$workers_file" ]]; then
+    while IFS= read -r worker_path; do
+      [[ -z "$worker_path" || ! -d "$worker_path" ]] && continue
+
+      local worker_name=$(basename "$worker_path")
+      echo ""
+      echo "📦 Worker: $worker_name"
+      local claude_dir="$worker_path/.claude"
+      mkdir -p "$claude_dir"
+
+      # settings.json com WORKER_ID correto
+      if [[ -f "$install_dir/templates/settings.worker.json" ]]; then
+        sed "s/WORKER_NAME/$worker_name/g" "$install_dir/templates/settings.worker.json" > "$claude_dir/settings.json"
+        echo "   ✅ settings.json atualizado (WORKER_ID: $worker_name)"
+      fi
+
+      # Symlinks para hooks
+      ln -sf "$install_dir/hooks/wt-check.sh" "$claude_dir/wt-check.sh"
+      ln -sf "$install_dir/hooks/wt-sync.sh" "$claude_dir/wt-sync.sh"
+      echo "   ✅ hooks symlinks atualizados"
+    done < "$workers_file"
+  fi
+
+  echo ""
+  echo "═══════════════════════════════════════"
+  echo " ✅ Projeto atualizado"
+  echo "═══════════════════════════════════════"
 }
 
 # Comando init
 cwt_init() {
   local project_name=""
+  local coordinator=""
 
   # Parse args do init
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --name|-n)
         project_name="$2"
+        shift 2
+        ;;
+      --repo|-r)
+        coordinator="$2"
         shift 2
         ;;
       *)
@@ -123,12 +205,23 @@ cwt_init() {
     exit 1
   fi
 
+  # Se não especificou coordenador, tentar detectar
+  if [[ -z "$coordinator" ]]; then
+    # Verificar se estamos dentro de um repo git
+    if git rev-parse --git-dir &>/dev/null; then
+      # Estamos em um repo - usar o nome do diretório atual
+      coordinator=$(basename "$PWD")
+      echo "ℹ️  Detectado repo git: $coordinator"
+    fi
+  fi
+
   # Criar estrutura
   mkdir -p .cwt
 
   cat > .cwt/config.json << EOF
 {
   "name": "$project_name",
+  "coordinator": "$coordinator",
   "created": "$(date -Iseconds)",
   "type": "project"
 }
@@ -141,14 +234,24 @@ EOF
   echo "═══════════════════════════════════════"
   echo " Nome:    $project_name"
   echo " Sessão:  cwt-$project_name"
+  if [[ -n "$coordinator" ]]; then
+    echo " Coord:   $coordinator"
+  fi
   echo " Config:  .cwt/config.json"
   echo " Estado:  .cwt/state.json"
   echo "═══════════════════════════════════════"
   echo ""
-  echo "Próximos passos:"
-  echo "  1. Clone o repo principal: git clone <url> main"
-  echo "  2. Crie worktrees: cd main && git worktree add ../feature-x -b feature/x"
-  echo "  3. Inicie: cwt feature-x feature-y"
+  if [[ -z "$coordinator" ]]; then
+    echo "Próximos passos:"
+    echo "  1. Clone o repo: git clone <url> <nome>"
+    echo "  2. Configure:    cwt config --repo <nome>"
+    echo "  3. Worktrees:    cd <nome> && wt-init worker1 worker2"
+    echo "  4. Inicie:       cwt"
+  else
+    echo "Próximos passos:"
+    echo "  1. Crie worktrees: wt-init worker1 worker2"
+    echo "  2. Inicie: cwt"
+  fi
   echo ""
 }
 
@@ -161,6 +264,11 @@ case "${1:-}" in
   init)
     shift
     cwt_init "$@"
+    exit 0
+    ;;
+  update)
+    shift
+    cwt_update "$@"
     exit 0
     ;;
 esac

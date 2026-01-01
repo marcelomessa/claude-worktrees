@@ -19,6 +19,8 @@ MISSING=""
 command -v git >/dev/null 2>&1 || MISSING="$MISSING git"
 command -v tmux >/dev/null 2>&1 || MISSING="$MISSING tmux"
 command -v jq >/dev/null 2>&1 || MISSING="$MISSING jq"
+command -v node >/dev/null 2>&1 || MISSING="$MISSING node"
+command -v nc >/dev/null 2>&1 || MISSING="$MISSING netcat"
 command -v claude >/dev/null 2>&1 || MISSING="$MISSING claude"
 
 if [[ -n "$MISSING" ]]; then
@@ -26,7 +28,7 @@ if [[ -n "$MISSING" ]]; then
   echo "⚠️  Dependências faltando:$MISSING"
   echo ""
   echo "Instale com:"
-  echo "  brew install tmux jq"
+  echo "  brew install tmux jq node netcat"
   echo "  npm install -g @anthropic-ai/claude-code"
   echo ""
   read -p "Continuar mesmo assim? [y/N] " -n 1 -r
@@ -46,6 +48,7 @@ mkdir -p "$BIN_DIR"
 echo "📦 Copiando arquivos..."
 cp -r "$SCRIPT_DIR/bin" "$INSTALL_DIR/"
 cp -r "$SCRIPT_DIR/lib" "$INSTALL_DIR/"
+cp -r "$SCRIPT_DIR/daemon" "$INSTALL_DIR/" 2>/dev/null || true
 cp -r "$SCRIPT_DIR/config" "$INSTALL_DIR/" 2>/dev/null || true
 cp -r "$SCRIPT_DIR/hooks" "$INSTALL_DIR/" 2>/dev/null || true
 cp -r "$SCRIPT_DIR/templates" "$INSTALL_DIR/" 2>/dev/null || true
@@ -53,6 +56,8 @@ cp -r "$SCRIPT_DIR/templates" "$INSTALL_DIR/" 2>/dev/null || true
 # Make executable
 chmod +x "$INSTALL_DIR/bin/"*
 chmod +x "$INSTALL_DIR/lib/"*
+chmod +x "$INSTALL_DIR/hooks/"*.sh 2>/dev/null || true
+chmod +x "$INSTALL_DIR/daemon/"*.js 2>/dev/null || true
 
 # Create symlinks
 echo "🔗 Criando symlinks..."
@@ -61,6 +66,9 @@ ln -sf "$INSTALL_DIR/lib/wt-msg" "$BIN_DIR/wt-msg"
 ln -sf "$INSTALL_DIR/lib/wt-init" "$BIN_DIR/wt-init"
 ln -sf "$INSTALL_DIR/lib/wt-setup" "$BIN_DIR/wt-setup"
 ln -sf "$INSTALL_DIR/lib/wt-task" "$BIN_DIR/wt-task"
+ln -sf "$INSTALL_DIR/hooks/wt-sync.sh" "$BIN_DIR/wt-sync"
+ln -sf "$INSTALL_DIR/hooks/wt-check.sh" "$BIN_DIR/wt-check"
+ln -sf "$INSTALL_DIR/lib/wt-override" "$BIN_DIR/wt-override"
 
 # Check PATH
 if [[ ":$PATH:" != *":$BIN_DIR:"* ]]; then
@@ -92,9 +100,19 @@ echo ""
 echo "✅ Instalação concluída!"
 echo ""
 echo "Uso:"
-echo "  cwt              # Iniciar ambiente interativo"
-echo "  cwt --help       # Ver ajuda"
-echo "  wt-msg status    # Status do worktree"
+echo "  cwt init --repo <repo>   # Inicializar projeto"
+echo "  wt-init <workers...>     # Criar worktrees"
+echo "  cwt                      # Iniciar ambiente multi-agente"
+echo ""
+echo "Comunicação:"
+echo "  wt-msg send <worker> \"msg\"  # Enviar mensagem"
+echo "  wt-task <worker> \"tarefa\"   # Enviar tarefa"
+echo "  wt-sync broadcast \"msg\"     # Broadcast"
+echo ""
+echo "Session Overrides:"
+echo "  wt-override allow \"git push\" --duration 2h  # Auto-aprovar asks"
+echo "  wt-override block \"rm -rf\"                  # Bloqueio temporário"
+echo "  wt-override list                            # Listar overrides"
 echo ""
 echo "Reinicie o terminal ou execute:"
 echo "  source $SHELL_RC"

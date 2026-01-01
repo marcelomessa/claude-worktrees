@@ -12,7 +12,15 @@
       "Bash(git diff:*)",
       "Bash(git log:*)",
       "Bash(git branch:*)",
+      "Bash(git checkout:*)",
+      "Bash(git merge:*)",
+      "Bash(git rebase:*)",
       "Bash(git stash:*)",
+      "Bash(git fetch:*)",
+      "Bash(git pull:*)",
+      "Bash(git worktree:*)",
+      "Bash(git remote:*)",
+      "Bash(git tag:*)",
       "Bash(npm:*)",
       "Bash(node:*)",
       "Bash(npx:*)",
@@ -21,31 +29,27 @@
       "Bash(mkdir:*)",
       "Bash(cp:*)",
       "Bash(mv:*)",
+      "Bash(rm:*)",
       "Bash(echo:*)",
       "Bash(pwd)",
       "Bash(which:*)",
+      "Bash(curl:*)",
       "Bash(wt-msg:*)",
       "Bash(wt-task:*)",
       "Bash(wt-sync:*)",
-      "Bash(wt-check:*)"
+      "Bash(wt-check:*)",
+      "Bash(azion:*)"
+    ],
+    "ask": [
+      "Bash(git push:*)",
+      "Bash(git push)"
     ],
     "deny": [
-      "Bash(git push:*)",
-      "Bash(git push)",
-      "Bash(git fetch:*)",
-      "Bash(git pull:*)",
-      "Bash(git merge:*)",
-      "Bash(git rebase:*)",
       "Bash(git reset --hard:*)",
-      "Bash(git checkout main)",
-      "Bash(git checkout master)",
-      "Bash(git add -A:*)",
-      "Bash(git add .:*)",
-      "Bash(azion deploy:*)",
-      "Bash(azion delete:*)",
-      "Bash(kill:*)",
-      "Bash(pkill:*)",
-      "Bash(killall:*)"
+      "Bash(git push --force:*)",
+      "Bash(git push -f:*)",
+      "Bash(rm -rf /:*)",
+      "Bash(rm -rf ~:*)"
     ]
   },
   "hooks": {
@@ -85,6 +89,6 @@
     ]
   },
   "env": {
-    "CLAUDE_WORKER_ID": "WORKER_NAME"
+    "CLAUDE_WORKER_ID": "coordinator"
   }
 }

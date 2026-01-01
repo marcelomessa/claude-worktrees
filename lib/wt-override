@@ -1,0 +1,267 @@
+#!/bin/bash
+# =============================================================================
+# WT-OVERRIDE - Gerenciar overrides de sessão
+# =============================================================================
+#
+# Permite adicionar/remover overrides temporários que:
+# - auto_approve: responde automaticamente "y" para comandos em "ask"
+# - block: adiciona bloqueios temporários na sessão
+#
+# Usage:
+#   wt-override allow "git push" --duration 2h --task "Deploy"
+#   wt-override block "rm -rf"
+#   wt-override list
+#   wt-override clear
+# =============================================================================
+
+# =============================================================================
+# FIND PROJECT ROOT
+# =============================================================================
+find_cwt_root() {
+  if [[ -n "$CWT_PROJECT_ROOT" && -d "$CWT_PROJECT_ROOT/.cwt" ]]; then
+    echo "$CWT_PROJECT_ROOT"
+    return 0
+  fi
+
+  local dir="$PWD"
+  while [[ "$dir" != "/" ]]; do
+    if [[ -d "$dir/.cwt" ]]; then
+      echo "$dir"
+      return 0
+    fi
+    dir=$(dirname "$dir")
+  done
+  return 1
+}
+
+CWT_ROOT=$(find_cwt_root)
+OVERRIDES_FILE="${CWT_ROOT:-.}/.cwt/session-overrides.json"
+
+# =============================================================================
+# HELPERS
+# =============================================================================
+init_overrides() {
+  if [[ ! -f "$OVERRIDES_FILE" ]]; then
+    mkdir -p "$(dirname "$OVERRIDES_FILE")"
+    cat > "$OVERRIDES_FILE" << 'INIT'
+{
+  "created": null,
+  "expires": null,
+  "task": null,
+  "overrides": {
+    "auto_approve": [],
+    "block": []
+  }
+}
+INIT
+    # Set created timestamp
+    local now=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+    jq ".created = \"$now\"" "$OVERRIDES_FILE" > "$OVERRIDES_FILE.tmp" && \
+      mv "$OVERRIDES_FILE.tmp" "$OVERRIDES_FILE"
+  fi
+}
+
+calc_expiry() {
+  local duration="$1"
+  local num="${duration%[hmd]}"
+  local unit="${duration: -1}"
+
+  case "$unit" in
+    h) seconds=$((num * 3600)) ;;
+    m) seconds=$((num * 60)) ;;
+    d) seconds=$((num * 86400)) ;;
+    *) seconds=$((num * 3600)) ;; # default hours
+  esac
+
+  # macOS
+  if date -v +1S >/dev/null 2>&1; then
+    date -u -v+"${seconds}S" '+%Y-%m-%dT%H:%M:%SZ'
+  else
+    # Linux
+    date -u -d "+${seconds} seconds" '+%Y-%m-%dT%H:%M:%SZ'
+  fi
+}
+
+# =============================================================================
+# COMMANDS
+# =============================================================================
+case "${1:-help}" in
+
+  allow|approve)
+    PATTERN="$2"
+    [[ -z "$PATTERN" ]] && echo "Usage: wt-override allow \"pattern\" [--duration 2h] [--task \"desc\"]" && exit 1
+
+    init_overrides
+
+    DURATION=""
+    TASK=""
+    shift 2
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --duration|-d) DURATION="$2"; shift 2 ;;
+        --task|-t) TASK="$2"; shift 2 ;;
+        *) shift ;;
+      esac
+    done
+
+    # Verificar se já existe
+    EXISTS=$(jq -r ".overrides.auto_approve | index(\"$PATTERN\")" "$OVERRIDES_FILE" 2>/dev/null)
+    if [[ "$EXISTS" != "null" && -n "$EXISTS" ]]; then
+      echo "⚠️  Pattern já existe: $PATTERN"
+    else
+      jq ".overrides.auto_approve += [\"$PATTERN\"]" "$OVERRIDES_FILE" > "$OVERRIDES_FILE.tmp" && \
+        mv "$OVERRIDES_FILE.tmp" "$OVERRIDES_FILE"
+      echo "✅ Auto-approve adicionado: $PATTERN"
+    fi
+
+    if [[ -n "$DURATION" ]]; then
+      EXPIRY=$(calc_expiry "$DURATION")
+      jq ".expires = \"$EXPIRY\"" "$OVERRIDES_FILE" > "$OVERRIDES_FILE.tmp" && \
+        mv "$OVERRIDES_FILE.tmp" "$OVERRIDES_FILE"
+      echo "   ⏰ Expira: $EXPIRY"
+    fi
+
+    if [[ -n "$TASK" ]]; then
+      jq ".task = \"$TASK\"" "$OVERRIDES_FILE" > "$OVERRIDES_FILE.tmp" && \
+        mv "$OVERRIDES_FILE.tmp" "$OVERRIDES_FILE"
+      echo "   📋 Tarefa: $TASK"
+    fi
+    ;;
+
+  block|deny)
+    PATTERN="$2"
+    [[ -z "$PATTERN" ]] && echo "Usage: wt-override block \"pattern\" [--duration 2h]" && exit 1
+
+    init_overrides
+
+    DURATION=""
+    shift 2
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --duration|-d) DURATION="$2"; shift 2 ;;
+        *) shift ;;
+      esac
+    done
+
+    # Verificar se já existe
+    EXISTS=$(jq -r ".overrides.block | index(\"$PATTERN\")" "$OVERRIDES_FILE" 2>/dev/null)
+    if [[ "$EXISTS" != "null" && -n "$EXISTS" ]]; then
+      echo "⚠️  Pattern já existe: $PATTERN"
+    else
+      jq ".overrides.block += [\"$PATTERN\"]" "$OVERRIDES_FILE" > "$OVERRIDES_FILE.tmp" && \
+        mv "$OVERRIDES_FILE.tmp" "$OVERRIDES_FILE"
+      echo "🚫 Block adicionado: $PATTERN"
+    fi
+
+    if [[ -n "$DURATION" ]]; then
+      EXPIRY=$(calc_expiry "$DURATION")
+      jq ".expires = \"$EXPIRY\"" "$OVERRIDES_FILE" > "$OVERRIDES_FILE.tmp" && \
+        mv "$OVERRIDES_FILE.tmp" "$OVERRIDES_FILE"
+      echo "   ⏰ Expira: $EXPIRY"
+    fi
+    ;;
+
+  remove|rm)
+    PATTERN="$2"
+    [[ -z "$PATTERN" ]] && echo "Usage: wt-override remove \"pattern\"" && exit 1
+
+    if [[ -f "$OVERRIDES_FILE" ]]; then
+      jq "del(.overrides.auto_approve[] | select(. == \"$PATTERN\"))" "$OVERRIDES_FILE" > "$OVERRIDES_FILE.tmp" && \
+        mv "$OVERRIDES_FILE.tmp" "$OVERRIDES_FILE"
+      jq "del(.overrides.block[] | select(. == \"$PATTERN\"))" "$OVERRIDES_FILE" > "$OVERRIDES_FILE.tmp" && \
+        mv "$OVERRIDES_FILE.tmp" "$OVERRIDES_FILE"
+      echo "✅ Removido: $PATTERN"
+    else
+      echo "Nenhum override configurado"
+    fi
+    ;;
+
+  list|show|status)
+    echo "═══════════════════════════════════════"
+    echo " Session Overrides"
+    echo "═══════════════════════════════════════"
+
+    if [[ ! -f "$OVERRIDES_FILE" ]]; then
+      echo ""
+      echo "Nenhum override de sessão configurado"
+      echo ""
+      echo "Use:"
+      echo "  wt-override allow \"git push\" --duration 2h"
+      echo "  wt-override block \"rm -rf\""
+      exit 0
+    fi
+
+    # Check expiration
+    EXPIRES=$(jq -r '.expires // empty' "$OVERRIDES_FILE" 2>/dev/null)
+    if [[ -n "$EXPIRES" && "$EXPIRES" != "null" ]]; then
+      echo ""
+      echo "⏰ Expira: $EXPIRES"
+    fi
+
+    TASK=$(jq -r '.task // empty' "$OVERRIDES_FILE" 2>/dev/null)
+    if [[ -n "$TASK" && "$TASK" != "null" ]]; then
+      echo "📋 Tarefa: $TASK"
+    fi
+
+    echo ""
+    echo "Auto-approve (comandos 'ask' serão aprovados):"
+    APPROVES=$(jq -r '.overrides.auto_approve // [] | .[]' "$OVERRIDES_FILE" 2>/dev/null)
+    if [[ -z "$APPROVES" ]]; then
+      echo "  (nenhum)"
+    else
+      echo "$APPROVES" | while read -r p; do
+        [[ -n "$p" ]] && echo "  ✅ $p"
+      done
+    fi
+
+    echo ""
+    echo "Block (comandos bloqueados temporariamente):"
+    BLOCKS=$(jq -r '.overrides.block // [] | .[]' "$OVERRIDES_FILE" 2>/dev/null)
+    if [[ -z "$BLOCKS" ]]; then
+      echo "  (nenhum)"
+    else
+      echo "$BLOCKS" | while read -r p; do
+        [[ -n "$p" ]] && echo "  🚫 $p"
+      done
+    fi
+    echo ""
+    ;;
+
+  clear|reset)
+    if [[ -f "$OVERRIDES_FILE" ]]; then
+      rm -f "$OVERRIDES_FILE"
+      echo "✅ Todos os overrides foram removidos"
+    else
+      echo "Nenhum override para remover"
+    fi
+    ;;
+
+  help|*)
+    echo "WT-OVERRIDE - Gerenciar overrides de sessão"
+    echo ""
+    echo "Comandos:"
+    echo "  allow \"pattern\" [--duration 2h] [--task \"desc\"]"
+    echo "      Auto-aprova comandos que dariam prompt 'ask'"
+    echo ""
+    echo "  block \"pattern\" [--duration 2h]"
+    echo "      Bloqueia temporariamente comandos permitidos"
+    echo ""
+    echo "  remove \"pattern\""
+    echo "      Remove um override específico"
+    echo ""
+    echo "  list"
+    echo "      Lista todos os overrides ativos"
+    echo ""
+    echo "  clear"
+    echo "      Remove todos os overrides"
+    echo ""
+    echo "Exemplos:"
+    echo "  wt-override allow \"git push\" --duration 2h --task \"Deploy v1.2\""
+    echo "  wt-override allow \"npm publish\" --duration 1h"
+    echo "  wt-override block \"rm -rf\" --duration 4h"
+    echo "  wt-override list"
+    echo "  wt-override clear"
+    echo ""
+    echo "Arquivo: $OVERRIDES_FILE"
+    ;;
+esac
