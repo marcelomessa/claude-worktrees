@@ -351,9 +351,18 @@ while [[ $# -gt 0 ]]; do
       if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
         tmux kill-session -t "$SESSION_NAME"
         echo "Sessão '$SESSION_NAME' encerrada"
-        pkill -f "tmux-pulser.sh" 2>/dev/null
       else
         echo "Sessão '$SESSION_NAME' não existe"
+      fi
+      # Parar daemon e pulser
+      if [[ -n "$CWT_ROOT" ]]; then
+        for pid_file in "$CWT_ROOT/.cwt/daemon.pid" "$CWT_ROOT/.cwt/pulser.pid"; do
+          if [[ -f "$pid_file" ]]; then
+            pid=$(cat "$pid_file" 2>/dev/null)
+            [[ -n "$pid" ]] && kill "$pid" 2>/dev/null
+            rm -f "$pid_file"
+          fi
+        done
       fi
       exit 0
       ;;

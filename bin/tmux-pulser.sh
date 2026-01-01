@@ -92,27 +92,74 @@ check_window() {
   local last_time=$(extract_datetime "$content")
   local idle_secs=$(seconds_since "$last_time")
 
+  # Detectar se Claude está esperando input
+  # Indicadores: "bypass permissions" ou linha vazia após separador ────
   local waiting_input=false
-  if echo "$content" | tail -5 | grep -qE '^[>›»]|Human:|You:'; then
+  if echo "$content" | tail -3 | grep -qE 'bypass permissions|shift\+tab to cycle' 2>/dev/null; then
     waiting_input=true
+  fi
+
+  # Detectar se há texto no buffer de input (texto antes de ↵ send)
+  local has_pending_input=false
+  if echo "$content" | tail -5 | grep -qE '↵ send' 2>/dev/null; then
+    has_pending_input=true
+  fi
+
+  # Detectar se Claude está processando
+  # Indicadores: spinner, "Thinking", "Hatching", "Investigating", contador de tempo
+  local is_busy=false
+  if echo "$content" | tail -10 | grep -qE '⠋|⠙|⠹|⠸|⠼|⠴|⠦|⠧|⠇|⠏|✻|Thinking|Working|Hatching|Investigating|Reading|Searching|Analyzing|[0-9]+m [0-9]+s|[0-9]+s \·' 2>/dev/null; then
+    is_busy=true
+    waiting_input=false
+  fi
+
+  # Detectar se há mensagens enfileiradas (indicador de que algo já está pendente)
+  if echo "$content" | tail -5 | grep -qE 'Press up to edit queued|queued messages' 2>/dev/null; then
+    is_busy=true
+    waiting_input=false
   fi
 
   local has_msgs=false
   has_pending_messages "$window_name" && has_msgs=true
 
-  log "   Window $window_num ($window_name): time=$last_time, idle=${idle_secs}s, waiting=$waiting_input, msgs=$has_msgs"
+  log "   [$window_num] $window_name: idle=${idle_secs}s waiting=$waiting_input busy=$is_busy pending=$has_pending_input"
 
+  # Se há input pendente (texto digitado esperando Enter), enviar Enter
+  if [[ "$has_pending_input" == "true" ]]; then
+    log "   ➡️  Enviando Enter para $window_name (input pendente)"
+    tmux send-keys -t "$SESSION_NAME:$window_num" "" C-m
+    return 0
+  fi
+
+  # Se está esperando input e idle por muito tempo
   if [[ "$waiting_input" == "true" && $idle_secs -gt $IDLE_THRESHOLD ]]; then
-    if [[ "$has_msgs" == "true" ]]; then
-      log "   ➡️  Sending 'act' to $window_name (has messages)"
-      tmux send-keys -t "$SESSION_NAME:$window_num" "act" Enter
-      return 0
-    elif [[ $idle_secs -gt $((IDLE_THRESHOLD * 3)) ]]; then
-      log "   ➡️  Sending 'status' to $window_name (very idle)"
-      tmux send-keys -t "$SESSION_NAME:$window_num" "status" Enter
+    local cmd=""
+
+    if [[ "$window_name" == "coordinator" ]]; then
+      # Coordinator: verificar mensagens ou continuar trabalho
+      if [[ "$has_msgs" == "true" ]]; then
+        cmd="wt-msg read"
+      else
+        cmd="continue"
+      fi
+    else
+      # Worker: verificar tarefas ou reportar status
+      if [[ "$has_msgs" == "true" ]]; then
+        cmd="wt-msg read"
+      else
+        cmd="wt-msg check"
+      fi
+    fi
+
+    if [[ -n "$cmd" ]]; then
+      log "   ➡️  Enviando '$cmd' para $window_name"
+      tmux send-keys -t "$SESSION_NAME:$window_num" "$cmd"
+      sleep 0.1
+      tmux send-keys -t "$SESSION_NAME:$window_num" "" C-m
       return 0
     fi
   fi
+
   return 1
 }
 
@@ -123,12 +170,17 @@ while true; do
     exit 1
   fi
 
-  log "🔍 Verificando workers..."
+  log "🔍 Verificando agentes..."
 
+  # Verificar coordinator (window 0)
+  check_window 0 "coordinator"
+
+  # Verificar workers
   if [[ -f "$WORKSPACES_FILE" ]]; then
     window_num=1
     while IFS= read -r worker; do
-      [[ -n "$worker" ]] && check_window "$window_num" "$worker" && ((window_num++))
+      [[ -n "$worker" ]] && check_window "$window_num" "$worker"
+      ((window_num++))
     done < "$WORKSPACES_FILE"
   else
     log "⚠️  Arquivo de workspaces não encontrado"

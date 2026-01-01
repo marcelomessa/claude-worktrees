@@ -1,7 +1,9 @@
 # Proposta: Coordenacao Multi-Projeto para CWT
 
 **Data:** 2025-12-31
-**Status:** Proposta para revisao
+**Status:** ✅ IMPLEMENTADO (2026-01-01)
+
+> Esta proposta foi implementada. Veja README.md para documentação atualizada.
 
 ---
 
@@ -448,12 +450,12 @@ SESSION_NAME="cwt"             SESSION_NAME="cwt-meu-projeto"
 
 ## Proximos Passos
 
-1. [ ] Implementar `cwt init` (criar .cwt/)
-2. [ ] Atualizar tmux-launcher.sh para detectar .cwt/
-3. [ ] Atualizar wt-msg para usar estado local
-4. [ ] Testar com 2-3 projetos simultaneos
-5. [ ] Documentar nova estrutura no README
+1. [x] Implementar `cwt init` (criar .cwt/)
+2. [x] Atualizar tmux-launcher.sh para detectar .cwt/
+3. [x] Atualizar wt-msg para usar estado local
+4. [x] Testar com 2-3 projetos simultaneos
+5. [x] Documentar nova estrutura no README
 
 ---
 
-*Proposta baseada na arquitetura real do CWT | 2025-12-31*
+*Proposta implementada | 2026-01-01*

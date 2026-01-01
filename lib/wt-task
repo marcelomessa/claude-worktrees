@@ -165,7 +165,9 @@ inject_task() {
 
   if [[ -n "$window_num" ]]; then
     # Inject the task as input
-    tmux send-keys -t "$SESSION_NAME:$window_num" "$task" Enter
+    tmux send-keys -t "$SESSION_NAME:$window_num" "$task"
+    sleep 0.1
+    tmux send-keys -t "$SESSION_NAME:$window_num" "" C-m
     echo "Task injected into window $window_num ($target)"
   else
     echo "Warning: Could not find window for $target"

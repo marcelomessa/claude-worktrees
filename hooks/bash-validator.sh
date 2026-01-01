@@ -124,7 +124,9 @@ while IFS= read -r pattern; do
         # Aguardar prompt aparecer
         sleep 0.3
         # Enviar "y" e Enter para aprovar
-        tmux send-keys -t "$TMUX_PANE" "y" Enter 2>/dev/null
+        tmux send-keys -t "$TMUX_PANE" "y" 2>/dev/null
+        sleep 0.1
+        tmux send-keys -t "$TMUX_PANE" "" C-m 2>/dev/null
       ) &
       disown 2>/dev/null
     fi

@@ -103,6 +103,7 @@ This installs to `~/.local/bin/`:
 - `wt-msg` - Inter-agent messaging
 - `wt-task` - Task assignment
 - `wt-init` - Worktree creation
+- `wt-override` - Session-specific command overrides
 
 ## Project-Based Setup (Recommended)
 
@@ -208,9 +209,9 @@ cwt   # Detects existing worktrees
 
 > Note: Legacy mode uses global state in `/tmp/`. For isolated multi-project work, use the project-based setup above.
 
-## Permissionless Mode (Critical)
+## Permissionless Mode (Default)
 
-CWT runs Claude with `--dangerously-skip-permissions` to enable autonomous operation without confirmation prompts.
+CWT runs Claude with `--dangerously-skip-permissions` by default to enable autonomous operation without confirmation prompts.
 
 ### Why This Mode?
 
@@ -220,17 +221,53 @@ CWT runs Claude with `--dangerously-skip-permissions` to enable autonomous opera
 
 ### Safety Measures
 
-Since permission checks are bypassed, safety is enforced via:
+Since permission checks are bypassed, safety is enforced via multiple layers:
 
-1. **CLAUDE.md templates** - Instructions that Claude follows
-2. **Prohibited commands list** - Destructive operations blocked by convention
-3. **Worktree isolation** - Each worker in separate directory
-4. **Coordinator control** - Only coordinator merges/deploys
+1. **bash-validator hook** - PreToolUse hook that blocks dangerous commands:
+   - Workers cannot: `git push`, `git merge`, `git rebase`, `kill`, deploy commands
+   - Everyone blocked from: `rm -rf /`, `mkfs`, `dd` to devices
+
+2. **file-protector hook** - Blocks workers from editing sensitive files:
+   - `azion.config.*`, `azion.json`, `.env*`, `Dockerfile`
+
+3. **CLAUDE.md templates** - Instructions that Claude follows
+
+4. **Worktree isolation** - Each worker in separate directory with own branch
+
+5. **Coordinator control** - Only coordinator merges/deploys
+
+6. **Branch protection** - Protected branches (main, master, dev) require work branches
+
+### Strict Mode
+
+For environments requiring native Claude permissions:
+
+```bash
+cwt --strict    # Uses Claude's native permission system
+```
+
+### Session Overrides
+
+Temporarily block or auto-approve commands for a session:
+
+```bash
+# Block npm publish for this session
+wt-override block "npm publish"
+
+# Auto-approve test commands
+wt-override approve "npm test"
+
+# View current overrides
+wt-override list
+
+# Clear all overrides
+wt-override clear
+```
 
 ### Risks
 
-- Workers CAN execute any command
-- Relies on Claude following CLAUDE.md instructions
+- Workers CAN execute commands not explicitly blocked
+- Relies on hooks + Claude following CLAUDE.md instructions
 - Always review changes before merging
 
 ## Prohibited Operations (Workers)
@@ -384,6 +421,34 @@ git merge feature/security
 # Deploys
 ```
 
+## Real-Time Communication
+
+CWT includes a Node.js daemon for real-time inter-agent communication via Unix sockets.
+
+### Daemon Features
+
+- **JSON-RPC protocol** over Unix socket
+- **PubSub messaging** - Subscribe to topics, broadcast messages
+- **Worker registry** - Track active workers and heartbeats
+- **Task queue** - Assign and track task completion
+- **Voting system** - Collective decision making
+
+The daemon starts automatically with `cwt` and creates a socket at `.cwt/cwt.sock`.
+
+### Pulser (Activity Monitor)
+
+The pulser monitors all Claude windows and:
+- **Detects idle agents** - Checks if Claude is waiting for input
+- **Detects busy agents** - Recognizes spinners, "Thinking...", "Investigating..."
+- **Auto-continues work** - Sends "continue" or "wt-msg check" when idle
+- **Handles queued input** - Submits pending text in input buffer
+
+```bash
+# Pulser runs automatically, but can be configured:
+PULSER_INTERVAL=30    # Check every 30 seconds (default)
+IDLE_THRESHOLD=60     # Consider idle after 60 seconds (default)
+```
+
 ## File Structure
 
 ```
@@ -392,19 +457,30 @@ claude-worktrees/
 │   ├── cwt                 # Main launcher
 │   ├── cwt-screen          # Screen version (legacy)
 │   ├── tmux-launcher.sh    # Tmux session creator
-│   └── tmux-pulser.sh      # Idle worker monitor
+│   └── tmux-pulser.sh      # Activity monitor (auto-continue)
 ├── lib/
 │   ├── wt-msg              # Messaging between agents
 │   ├── wt-task             # Task assignment
 │   ├── wt-init             # Worktree creation helper
+│   ├── wt-override         # Session command overrides
 │   └── wt-setup            # Environment setup
+├── daemon/
+│   ├── index.js            # Main daemon entry point
+│   ├── socket-server.js    # Unix socket JSON-RPC server
+│   ├── state-manager.js    # Persistent state management
+│   ├── pubsub.js           # Publish/subscribe messaging
+│   └── voting.js           # Collective voting system
 ├── config/
 │   ├── tmux.conf           # Tmux configuration (mouse, colors)
 │   └── screenrc            # Screen configuration (legacy)
 ├── templates/
 │   ├── CLAUDE.coord.md     # Coordinator instructions
-│   └── CLAUDE.worker.md    # Worker instructions
+│   ├── CLAUDE.worker.md    # Worker instructions
+│   ├── settings.coord.json # Coordinator Claude settings
+│   └── settings.worker.json # Worker Claude settings
 ├── hooks/
+│   ├── bash-validator.sh   # Command validation (blocks dangerous ops)
+│   ├── file-protector.sh   # Protects sensitive files from workers
 │   ├── init-worker.sh      # Worker initialization hook
 │   └── statusline.sh       # Status bar hook
 ├── install.sh              # Installation script
@@ -413,12 +489,21 @@ claude-worktrees/
 
 ## Logs
 
-All sessions are logged to `~/repos/terminal_logs/`:
+All sessions are logged to `.cwt/logs/` within the project:
 
 ```
-cwt-coordinator-20241231-143022.log
-cwt-frontend-20241231-143022.log
-cwt-backend-20241231-143022.log
+my-project/.cwt/logs/
+├── cwt-coordinator-20241231-143022.log
+├── cwt-frontend-20241231-143022.log
+├── cwt-backend-20241231-143022.log
+├── cwt-daemon-20241231-143022.log
+└── cwt-pulser-20241231-143022.log
+```
+
+Custom log directory:
+```bash
+export CWT_LOG_DIR=/path/to/logs
+cwt
 ```
 
 ## Requirements
@@ -426,22 +511,19 @@ cwt-backend-20241231-143022.log
 - git (with worktree support, 2.5+)
 - tmux
 - jq
+- Node.js (for daemon, optional but recommended)
 - Claude Code CLI
 
 ## Configuration
 
-### Custom Log Directory
+### Environment Variables
 
-```bash
-export CWT_LOG_DIR=/path/to/logs
-cwt frontend backend
-```
-
-### Custom Project Directory
-
-```bash
-CWT_PROJECT=/path/to/repo cwt frontend backend
-```
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `CWT_LOG_DIR` | Custom log directory | `.cwt/logs/` |
+| `CWT_PROJECT` | Override project directory | Current directory |
+| `PULSER_INTERVAL` | Seconds between activity checks | 30 |
+| `IDLE_THRESHOLD` | Seconds before considered idle | 60 |
 
 ## Troubleshooting
 
@@ -454,9 +536,19 @@ cwt           # Start fresh
 
 ### Workers Not Seeing Messages
 
-Check message directory permissions:
+Check if daemon is running:
 ```bash
-ls -la /tmp/claude-wt-messages/
+ps aux | grep "daemon/index.js"
+```
+
+Check socket exists:
+```bash
+ls -la .cwt/cwt.sock
+```
+
+Restart the session:
+```bash
+cwt --kill && cwt
 ```
 
 ### Worktree Not Found
@@ -469,6 +561,30 @@ git worktree list
 Create if missing:
 ```bash
 git worktree add ../workspace-name -b feature/name
+```
+
+### Daemon Not Starting
+
+Check Node.js is installed:
+```bash
+node --version
+```
+
+Check daemon logs:
+```bash
+cat .cwt/logs/cwt-daemon-*.log
+```
+
+### Pulser Not Working
+
+Check pulser logs:
+```bash
+cat /tmp/cwt-pulser.log
+```
+
+Verify pulser is running:
+```bash
+ps aux | grep tmux-pulser
 ```
 
 ## License

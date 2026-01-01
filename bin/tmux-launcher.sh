@@ -10,8 +10,8 @@
 #   --strict        Use Claude's native permissions (no --dangerously-skip-permissions)
 # =============================================================================
 
-# Parse arguments
-CONTINUE_FLAG=""
+# Parse arguments (preserve exported values from cwt)
+CONTINUE_FLAG="${CONTINUE_FLAG:-}"
 SKIP_PERMISSIONS="${SKIP_PERMISSIONS:-1}"  # Default: skip permissions, use bash-validator
 WORKSPACES_ARGS=()
 
@@ -217,6 +217,40 @@ EOF
 }
 
 # ============================================================================
+# FUNÇÕES DE ESPERA
+# ============================================================================
+
+# Aguardar Claude estar pronto (detectar prompt)
+wait_for_claude() {
+  local session="$1"
+  local window="$2"
+  local max_attempts="${3:-30}"  # 30 tentativas = ~15 segundos
+  local attempt=0
+
+  while [[ $attempt -lt $max_attempts ]]; do
+    # Capturar últimas linhas do pane
+    local output=$(tmux capture-pane -t "$session:$window" -p -S -5 2>/dev/null)
+
+    # Claude pronto: mostra ">" prompt ou está aguardando input
+    # Claude falhou: mostra "%" (zsh) ou erro
+    if echo "$output" | grep -qE "^>" 2>/dev/null; then
+      return 0  # Claude pronto
+    fi
+
+    # Se voltou ao shell (% prompt após comando claude), falhou
+    if echo "$output" | grep -qE "^[^>]*%[[:space:]]*$" 2>/dev/null && \
+       echo "$output" | grep -qE "(No conversation|Error|failed)" 2>/dev/null; then
+      return 1  # Claude falhou
+    fi
+
+    sleep 0.5
+    ((attempt++))
+  done
+
+  return 1  # Timeout
+}
+
+# ============================================================================
 # INICIALIZAÇÃO
 # ============================================================================
 
@@ -385,11 +419,6 @@ tmux send-keys -t "$SESSION_NAME:0" "echo '🎯 COORDINATOR - $COORD_DIR_NAME ($
 sleep 0.2
 tmux send-keys -t "$SESSION_NAME:0" "claude ${SKIP_PERMISSIONS:+--dangerously-skip-permissions} $CONTINUE_FLAG" Enter
 
-# Aguardar Claude iniciar e enviar prompt inicial
-sleep 3
-COORD_PROMPT=$(get_coordinator_prompt "${WORKSPACES[*]}")
-tmux send-keys -t "$SESSION_NAME:0" "$COORD_PROMPT" Enter
-
 # Criar window para cada worker
 WINDOW_NUM=1
 WORKER_WINDOWS=()
@@ -448,15 +477,35 @@ for workspace in "${WORKSPACES[@]}"; do
   ((WINDOW_NUM++))
 done
 
-# Enviar prompts iniciais para workers (após todos iniciarem)
-echo "⏳ Aguardando workers iniciarem..."
-sleep 5
+# Enviar prompts iniciais para coordinator e workers (após todos iniciarem)
+echo "⏳ Aguardando Claude iniciar..."
+
+# Aguardar e enviar prompt para coordinator
+echo "   ⏳ Aguardando coordinator..."
+if wait_for_claude "$SESSION_NAME" 0; then
+  COORD_PROMPT=$(get_coordinator_prompt "${WORKSPACES[*]}")
+  tmux send-keys -t "$SESSION_NAME:0" "$COORD_PROMPT"
+  sleep 0.1
+  tmux send-keys -t "$SESSION_NAME:0" "" C-m
+  echo "   ✅ Coordinator pronto"
+else
+  echo "   ⚠️  Coordinator: Claude não iniciou (verifique a window 0)"
+fi
+
+# Aguardar e enviar prompts para workers
 for worker_info in "${WORKER_WINDOWS[@]}"; do
   win_num="${worker_info%%:*}"
   worker_id="${worker_info#*:}"
-  WORKER_PROMPT=$(get_worker_prompt "$worker_id")
-  tmux send-keys -t "$SESSION_NAME:$win_num" "$WORKER_PROMPT" Enter
-  echo "   📨 Prompt enviado para $worker_id"
+  echo "   ⏳ Aguardando $worker_id..."
+  if wait_for_claude "$SESSION_NAME" "$win_num"; then
+    WORKER_PROMPT=$(get_worker_prompt "$worker_id")
+    tmux send-keys -t "$SESSION_NAME:$win_num" "$WORKER_PROMPT"
+    sleep 0.1
+    tmux send-keys -t "$SESSION_NAME:$win_num" "" C-m
+    echo "   ✅ $worker_id pronto"
+  else
+    echo "   ⚠️  $worker_id: Claude não iniciou (verifique a window $win_num)"
+  fi
 done
 
 # Window final: Monitor
@@ -464,6 +513,36 @@ echo "   $WINDOW_NUM: monitor"
 tmux new-window -t "$SESSION_NAME" -n "monitor"
 sleep 0.2
 tmux send-keys -t "$SESSION_NAME:$WINDOW_NUM" "cd '$COORD_DIR' && echo '📊 Monitor - $SESSION_NAME'" Enter
+
+# ============================================================================
+# INICIAR PULSER (monitor de atividade)
+# ============================================================================
+
+PULSER_SCRIPT="$CWT_BIN_DIR/tmux-pulser.sh"
+PULSER_LOG="$LOG_DIR/cwt-pulser-$TIMESTAMP.log"
+PULSER_PID_FILE="$PROJECT_ROOT/.cwt/pulser.pid"
+
+# Parar pulser anterior se existir
+if [[ -f "$PULSER_PID_FILE" ]]; then
+  OLD_PID=$(cat "$PULSER_PID_FILE" 2>/dev/null)
+  if [[ -n "$OLD_PID" ]] && kill -0 "$OLD_PID" 2>/dev/null; then
+    kill "$OLD_PID" 2>/dev/null
+  fi
+  rm -f "$PULSER_PID_FILE"
+fi
+
+# Iniciar pulser em background
+if [[ -f "$PULSER_SCRIPT" ]]; then
+  echo ""
+  echo "🔄 Iniciando pulser..."
+  SESSION_NAME="$SESSION_NAME" CWT_PROJECT_ROOT="$PROJECT_ROOT" \
+    nohup "$PULSER_SCRIPT" >> "$PULSER_LOG" 2>&1 &
+  echo $! > "$PULSER_PID_FILE"
+  sleep 0.3
+  if kill -0 "$(cat "$PULSER_PID_FILE")" 2>/dev/null; then
+    echo "   ✅ Pulser ativo (intervalo: ${PULSER_INTERVAL:-30}s)"
+  fi
+fi
 
 echo ""
 echo "✅ Ambiente criado!"
@@ -475,6 +554,9 @@ echo "   Ctrl+b 0-9  Ir para window N"
 echo "   Ctrl+b d    Desconectar"
 echo ""
 
+# Selecionar window do coordinator antes de conectar
+tmux select-window -t "$SESSION_NAME:0"
+
 # Conectar
-sleep 1
+sleep 0.5
 exec tmux attach -t "$SESSION_NAME"
