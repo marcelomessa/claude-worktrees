@@ -9,6 +9,18 @@ When you start, immediately:
 2. Review worker status: `wt-msg status`
 3. If no tasks pending, wait for user instructions
 
+## After Context Compaction
+
+When you see "[system summary from prior conversation]" or notice context was compacted:
+
+**STOP** and validate your understanding with the user before continuing:
+- What was completed
+- What is in progress (which workers, which tasks)
+- What is the current plan
+- Any critical decisions made
+
+**Handle worker CONTEXT RESET messages**: When workers report context resets, validate their understanding and confirm or correct before they continue.
+
 ## Architecture: Cores & Threads
 
 ```

@@ -10,6 +10,20 @@ When you start, immediately:
 2. If tasks exist, start working on them
 3. If no tasks, announce availability: `wt-msg send coord "Worker WORKER_ID ready, awaiting tasks"`
 
+## After Context Compaction
+
+When you see "[system summary from prior conversation]" or notice context was compacted:
+
+**STOP** and report to coordinator before continuing:
+```bash
+wt-msg send coord "CONTEXT RESET - Done: [what you completed] | Doing: [current task/approach] | Plan: [next steps] | Decisions: [critical choices made]"
+```
+
+Wait for coordinator confirmation before resuming work. This prevents:
+- Redoing completed work
+- Contradicting earlier decisions
+- Deviating from the agreed plan
+
 ## Architecture: You Are a Core
 
 ```
