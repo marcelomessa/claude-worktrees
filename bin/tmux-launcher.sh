@@ -492,13 +492,31 @@ echo "⏳ Aguardando Claude iniciar..."
 # Aguardar e enviar prompt para coordinator
 echo "   ⏳ Aguardando coordinator..."
 if wait_for_claude "$SESSION_NAME" 0; then
-  COORD_PROMPT=$(get_coordinator_prompt "${WORKSPACES[*]}")
-  tmux send-keys -t "$SESSION_NAME:0" "$COORD_PROMPT"
-  sleep 0.1
-  tmux send-keys -t "$SESSION_NAME:0" "" C-m
+  # Se --continue foi usado e funcionou, não enviar prompt (já tem contexto)
+  if [[ -z "$CONTINUE_FLAG" ]]; then
+    COORD_PROMPT=$(get_coordinator_prompt "${WORKSPACES[*]}")
+    tmux send-keys -t "$SESSION_NAME:0" "$COORD_PROMPT"
+    sleep 0.1
+    tmux send-keys -t "$SESSION_NAME:0" "" C-m
+  fi
   echo "   ✅ Coordinator pronto"
 else
-  echo "   ⚠️  Coordinator: Claude não iniciou (verifique a window 0)"
+  # Se --continue falhou, reiniciar sem a flag
+  if [[ -n "$CONTINUE_FLAG" ]]; then
+    echo "   ⚠️  Coordinator: --continue falhou, reiniciando..."
+    tmux send-keys -t "$SESSION_NAME:0" "claude ${SKIP_PERMISSIONS:+--dangerously-skip-permissions}" Enter
+    if wait_for_claude "$SESSION_NAME" 0; then
+      COORD_PROMPT=$(get_coordinator_prompt "${WORKSPACES[*]}")
+      tmux send-keys -t "$SESSION_NAME:0" "$COORD_PROMPT"
+      sleep 0.1
+      tmux send-keys -t "$SESSION_NAME:0" "" C-m
+      echo "   ✅ Coordinator pronto (fallback)"
+    else
+      echo "   ⚠️  Coordinator: Claude não iniciou (verifique a window 0)"
+    fi
+  else
+    echo "   ⚠️  Coordinator: Claude não iniciou (verifique a window 0)"
+  fi
 fi
 
 # Aguardar e enviar prompts para workers
@@ -507,13 +525,31 @@ for worker_info in "${WORKER_WINDOWS[@]}"; do
   worker_id="${worker_info#*:}"
   echo "   ⏳ Aguardando $worker_id..."
   if wait_for_claude "$SESSION_NAME" "$win_num"; then
-    WORKER_PROMPT=$(get_worker_prompt "$worker_id")
-    tmux send-keys -t "$SESSION_NAME:$win_num" "$WORKER_PROMPT"
-    sleep 0.1
-    tmux send-keys -t "$SESSION_NAME:$win_num" "" C-m
+    # Se --continue foi usado e funcionou, não enviar prompt (já tem contexto)
+    if [[ -z "$CONTINUE_FLAG" ]]; then
+      WORKER_PROMPT=$(get_worker_prompt "$worker_id")
+      tmux send-keys -t "$SESSION_NAME:$win_num" "$WORKER_PROMPT"
+      sleep 0.1
+      tmux send-keys -t "$SESSION_NAME:$win_num" "" C-m
+    fi
     echo "   ✅ $worker_id pronto"
   else
-    echo "   ⚠️  $worker_id: Claude não iniciou (verifique a window $win_num)"
+    # Se --continue falhou, reiniciar sem a flag
+    if [[ -n "$CONTINUE_FLAG" ]]; then
+      echo "   ⚠️  $worker_id: --continue falhou, reiniciando..."
+      tmux send-keys -t "$SESSION_NAME:$win_num" "claude ${SKIP_PERMISSIONS:+--dangerously-skip-permissions}" Enter
+      if wait_for_claude "$SESSION_NAME" "$win_num"; then
+        WORKER_PROMPT=$(get_worker_prompt "$worker_id")
+        tmux send-keys -t "$SESSION_NAME:$win_num" "$WORKER_PROMPT"
+        sleep 0.1
+        tmux send-keys -t "$SESSION_NAME:$win_num" "" C-m
+        echo "   ✅ $worker_id pronto (fallback)"
+      else
+        echo "   ⚠️  $worker_id: Claude não iniciou (verifique a window $win_num)"
+      fi
+    else
+      echo "   ⚠️  $worker_id: Claude não iniciou (verifique a window $win_num)"
+    fi
   fi
 done
 
