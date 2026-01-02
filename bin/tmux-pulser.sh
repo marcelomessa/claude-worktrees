@@ -33,15 +33,17 @@ if [[ -n "$CWT_ROOT" ]]; then
   SESSION_NAME="${SESSION_NAME:-cwt-$PROJECT_NAME}"
   STATE_FILE="$CWT_ROOT/.cwt/state.json"
   WORKSPACES_FILE="$CWT_ROOT/.cwt/workers.txt"
+  LOG_FILE="$CWT_ROOT/.cwt/cwt-pulser.log"
 else
   SESSION_NAME="${SESSION_NAME:-cwt}"
   STATE_FILE="/tmp/claude-wt-state.json"
   WORKSPACES_FILE="/tmp/cwt-workers-list.txt"
+  LOG_FILE="/tmp/cwt-pulser.log"
 fi
 
-INTERVAL="${PULSER_INTERVAL:-30}"
-IDLE_THRESHOLD="${IDLE_THRESHOLD:-60}"
-LOG_FILE="/tmp/cwt-pulser.log"
+# Token optimization: longer intervals to reduce unnecessary checks
+INTERVAL="${PULSER_INTERVAL:-120}"        # Check every 2 minutes (was 30s)
+IDLE_THRESHOLD="${IDLE_THRESHOLD:-180}"   # Worker idle threshold: 3 minutes (was 60s)
 
 log() {
   echo "[$(date '+%H:%M:%S')] $*" >> "$LOG_FILE"
@@ -149,12 +151,12 @@ check_window() {
       fi
       # NÃO enviar "continue" para coordinator - deixar humano decidir
     else
-      # Worker: verificar tarefas ou reportar status
+      # Worker: only notify if there are pending messages
+      # Don't send wt-msg check - it wastes tokens when nothing pending
       if [[ "$has_msgs" == "true" ]]; then
         cmd="wt-msg read"
-      else
-        cmd="wt-msg check"
       fi
+      # If no messages, do nothing - let workers communicate naturally
     fi
 
     if [[ -n "$cmd" ]]; then

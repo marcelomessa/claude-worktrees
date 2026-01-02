@@ -11,7 +11,6 @@
 # =============================================================================
 
 WORKER_ID="${CLAUDE_WORKER_ID:-coord}"
-TASKS_DIR="/tmp/claude-wt-tasks"
 
 # Detectar .cwt/ subindo a árvore de diretórios
 find_cwt_root() {
@@ -54,8 +53,18 @@ get_session_name() {
   fi
 }
 
+get_tasks_dir() {
+  local cwt_root=$(find_cwt_root)
+  if [[ -n "$cwt_root" ]]; then
+    echo "$cwt_root/.cwt/tasks"
+  else
+    echo "/tmp/claude-wt-tasks"
+  fi
+}
+
 STATE_FILE=$(get_state_file)
 SESSION_NAME=$(get_session_name)
+TASKS_DIR=$(get_tasks_dir)
 
 # Ensure tasks directory exists
 mkdir -p "$TASKS_DIR"
@@ -82,7 +91,7 @@ Examples:
   wt-task --inject back "Fix the API endpoint"
   wt-task --list
 
-Task files are stored in /tmp/claude-wt-tasks/
+Task files are stored in .cwt/tasks/ (or /tmp/claude-wt-tasks/ in legacy mode)
 EOF
 }
 

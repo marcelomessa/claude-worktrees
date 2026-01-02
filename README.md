@@ -445,8 +445,8 @@ The pulser monitors all Claude windows and:
 
 ```bash
 # Pulser runs automatically, but can be configured:
-PULSER_INTERVAL=30    # Check every 30 seconds (default)
-IDLE_THRESHOLD=60     # Consider idle after 60 seconds (default)
+PULSER_INTERVAL=120   # Check every 2 minutes (default)
+IDLE_THRESHOLD=180    # Consider idle after 3 minutes (default)
 ```
 
 ## File Structure
@@ -455,9 +455,8 @@ IDLE_THRESHOLD=60     # Consider idle after 60 seconds (default)
 claude-worktrees/
 ├── bin/
 │   ├── cwt                 # Main launcher
-│   ├── cwt-screen          # Screen version (legacy)
 │   ├── tmux-launcher.sh    # Tmux session creator
-│   └── tmux-pulser.sh      # Activity monitor (auto-continue)
+│   └── tmux-pulser.sh      # Activity monitor
 ├── lib/
 │   ├── wt-msg              # Messaging between agents
 │   ├── wt-task             # Task assignment
@@ -471,8 +470,7 @@ claude-worktrees/
 │   ├── pubsub.js           # Publish/subscribe messaging
 │   └── voting.js           # Collective voting system
 ├── config/
-│   ├── tmux.conf           # Tmux configuration (mouse, colors)
-│   └── screenrc            # Screen configuration (legacy)
+│   └── tmux.conf           # Tmux configuration (mouse, colors)
 ├── templates/
 │   ├── CLAUDE.coord.md     # Coordinator instructions
 │   ├── CLAUDE.worker.md    # Worker instructions
@@ -522,8 +520,8 @@ cwt
 |----------|-------------|---------|
 | `CWT_LOG_DIR` | Custom log directory | `.cwt/logs/` |
 | `CWT_PROJECT` | Override project directory | Current directory |
-| `PULSER_INTERVAL` | Seconds between activity checks | 30 |
-| `IDLE_THRESHOLD` | Seconds before considered idle | 60 |
+| `PULSER_INTERVAL` | Seconds between activity checks | 120 |
+| `IDLE_THRESHOLD` | Seconds before considered idle | 180 |
 
 ## Troubleshooting
 
@@ -579,7 +577,7 @@ cat .cwt/logs/cwt-daemon-*.log
 
 Check pulser logs:
 ```bash
-cat /tmp/cwt-pulser.log
+cat .cwt/cwt-pulser.log
 ```
 
 Verify pulser is running:

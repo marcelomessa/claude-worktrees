@@ -37,7 +37,7 @@ set -- "${WORKSPACES_ARGS[@]}"
 
 # Usar sessão do ambiente ou padrão
 SESSION_NAME="${SESSION_NAME:-cwt}"
-PULSER_INTERVAL=${PULSER_INTERVAL:-30}
+PULSER_INTERVAL=${PULSER_INTERVAL:-120}
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 # LOG_DIR será definido após detectar PROJECT_ROOT
 CWT_BIN_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -549,7 +549,7 @@ if [[ -f "$PULSER_SCRIPT" ]]; then
   echo $! > "$PULSER_PID_FILE"
   sleep 0.3
   if kill -0 "$(cat "$PULSER_PID_FILE")" 2>/dev/null; then
-    echo "   ✅ Pulser ativo (intervalo: ${PULSER_INTERVAL:-30}s)"
+    echo "   ✅ Pulser ativo (intervalo: ${PULSER_INTERVAL:-120}s)"
   fi
 fi
 

@@ -11,8 +11,31 @@
 # =============================================================================
 
 WT_HOME="${WT_HOME:-$(dirname "$(dirname "$(realpath "$0")")")}"
-CONFIG_FILE="/tmp/claude-wt-config.json"
 TEMPLATES_DIR="$WT_HOME/templates"
+
+# Detectar .cwt/ subindo a árvore de diretórios
+find_cwt_root() {
+  if [[ -n "$CWT_PROJECT_ROOT" && -d "$CWT_PROJECT_ROOT/.cwt" ]]; then
+    echo "$CWT_PROJECT_ROOT"
+    return 0
+  fi
+  local dir="$PWD"
+  while [[ "$dir" != "/" ]]; do
+    if [[ -d "$dir/.cwt" ]]; then
+      echo "$dir"
+      return 0
+    fi
+    dir=$(dirname "$dir")
+  done
+  return 1
+}
+
+CWT_ROOT=$(find_cwt_root)
+if [[ -n "$CWT_ROOT" ]]; then
+  CONFIG_FILE="$CWT_ROOT/.cwt/config.json"
+else
+  CONFIG_FILE="/tmp/claude-wt-config.json"
+fi
 
 show_help() {
   cat << 'EOF'

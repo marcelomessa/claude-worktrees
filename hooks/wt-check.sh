@@ -63,16 +63,12 @@ check_daemon() {
 }
 
 # =============================================================================
-# STATUS MODE - Status completo (UserPromptSubmit)
+# STATUS MODE - Minimal output (UserPromptSubmit)
 # =============================================================================
 mode_status() {
   if ! check_daemon; then
-    echo "⚠️  Daemon offline - comunicação desabilitada"
     return
   fi
-
-  echo "═══ CWT COORDINATION ($WORKER_ID) ═══"
-  echo ""
 
   # Registrar heartbeat
   send_as_worker '{"method":"heartbeat","id":1}' >/dev/null
@@ -89,12 +85,6 @@ except:
     print(0)
 " 2>/dev/null || echo 0)
 
-  if [[ "$msg_count" -gt 0 ]]; then
-    echo "📬 $msg_count mensagem(s) pendente(s)"
-    echo "   → wt-msg read"
-    echo ""
-  fi
-
   # Verificar votações ativas
   local votes=$(send_request '{"method":"get_active_votes","id":3}')
   local vote_count=$(echo "$votes" | python3 -c "
@@ -106,42 +96,19 @@ except:
     print(0)
 " 2>/dev/null || echo 0)
 
-  if [[ "$vote_count" -gt 0 ]]; then
-    echo "🗳️  $vote_count votação(ões) ativa(s)"
-    echo "$votes" | python3 -c "
-import sys, json
-try:
-    data = json.load(sys.stdin)
-    for v in data.get('result', []):
-        print(f\"   [{v['id']}] {v['decision']}\")
-        print(f\"       Opções: {', '.join(v['options'])} | Votos: {v.get('currentVotes', 0)}/{v['quorum']}\")
-except: pass
-" 2>/dev/null
-    echo ""
-  fi
+  # Only output if something pending
+  local output=""
+  [[ "$msg_count" -gt 0 ]] && output="$msg_count msgs"
+  [[ "$vote_count" -gt 0 ]] && {
+    [[ -n "$output" ]] && output="$output, "
+    output="${output}$vote_count vote(s)"
+  }
 
-  # Workers ativos
-  local workers=$(send_request '{"method":"get_workers","id":4}')
-  local worker_list=$(echo "$workers" | python3 -c "
-import sys, json
-try:
-    data = json.load(sys.stdin)
-    workers = data.get('result', [])
-    names = [w['id'] for w in workers]
-    print(', '.join(names) if names else '')
-except: pass
-" 2>/dev/null)
-
-  if [[ -n "$worker_list" ]]; then
-    echo "👥 Workers ativos: $worker_list"
-    echo ""
-  fi
-
-  echo "═══════════════════════════════════════"
+  [[ -n "$output" ]] && echo "CWT: $output"
 }
 
 # =============================================================================
-# QUICK MODE - Verificação rápida (PostToolUse)
+# QUICK MODE - Minimal check (PostToolUse)
 # =============================================================================
 mode_quick() {
   if ! check_daemon; then
@@ -150,8 +117,6 @@ mode_quick() {
 
   # Registrar heartbeat
   send_as_worker '{"method":"heartbeat","id":1}' >/dev/null
-
-  local has_urgent=0
 
   # Verificar mensagens
   local messages=$(send_as_worker '{"method":"get_messages","id":2}')
@@ -165,11 +130,6 @@ except:
     print(0)
 " 2>/dev/null || echo 0)
 
-  if [[ "$msg_count" -gt 0 ]]; then
-    echo "📬 $msg_count msg - wt-msg read"
-    has_urgent=1
-  fi
-
   # Verificar votações
   local votes=$(send_request '{"method":"get_active_votes","id":3}')
   local vote_count=$(echo "$votes" | python3 -c "
@@ -181,10 +141,15 @@ except:
     print(0)
 " 2>/dev/null || echo 0)
 
-  if [[ "$vote_count" -gt 0 ]]; then
-    echo "🗳️  $vote_count votação(ões) ativa(s)"
-    has_urgent=1
-  fi
+  # Only output if something pending
+  local output=""
+  [[ "$msg_count" -gt 0 ]] && output="$msg_count msgs"
+  [[ "$vote_count" -gt 0 ]] && {
+    [[ -n "$output" ]] && output="$output, "
+    output="${output}$vote_count vote(s)"
+  }
+
+  [[ -n "$output" ]] && echo "CWT: $output"
 }
 
 # =============================================================================

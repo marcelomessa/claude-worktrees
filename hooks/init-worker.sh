@@ -6,8 +6,32 @@
 # =============================================================================
 
 WORKER_ID="${CLAUDE_WORKER_ID:-$(basename "$PWD")}"
-STATE_FILE="/tmp/claude-wt-state.json"
-TASKS_DIR="/tmp/claude-wt-tasks"
+
+# Detectar .cwt/ subindo a árvore de diretórios
+find_cwt_root() {
+  if [[ -n "$CWT_PROJECT_ROOT" && -d "$CWT_PROJECT_ROOT/.cwt" ]]; then
+    echo "$CWT_PROJECT_ROOT"
+    return 0
+  fi
+  local dir="$PWD"
+  while [[ "$dir" != "/" ]]; do
+    if [[ -d "$dir/.cwt" ]]; then
+      echo "$dir"
+      return 0
+    fi
+    dir=$(dirname "$dir")
+  done
+  return 1
+}
+
+CWT_ROOT=$(find_cwt_root)
+if [[ -n "$CWT_ROOT" ]]; then
+  STATE_FILE="$CWT_ROOT/.cwt/state.json"
+  TASKS_DIR="$CWT_ROOT/.cwt/tasks"
+else
+  STATE_FILE="/tmp/claude-wt-state.json"
+  TASKS_DIR="/tmp/claude-wt-tasks"
+fi
 
 # Initialize state if needed
 if [[ ! -f "$STATE_FILE" ]]; then
