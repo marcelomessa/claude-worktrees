@@ -230,13 +230,17 @@ Since permission checks are bypassed, safety is enforced via multiple layers:
 2. **file-protector hook** - Blocks workers from editing sensitive files:
    - `azion.config.*`, `azion.json`, `.env*`, `Dockerfile`
 
-3. **CLAUDE.md templates** - Instructions that Claude follows
+3. **wt-check hook** - PostToolUse/UserPromptSubmit hook for coordination:
+   - Shows pending messages and votes
+   - Detects context compaction and alerts agents
 
-4. **Worktree isolation** - Each worker in separate directory with own branch
+4. **CLAUDE.md templates** - Instructions that Claude follows
 
-5. **Coordinator control** - Only coordinator merges/deploys
+5. **Worktree isolation** - Each worker in separate directory with own branch
 
-6. **Branch protection** - Protected branches (main, master, dev) require work branches
+6. **Coordinator control** - Only coordinator merges/deploys
+
+7. **Branch protection** - Protected branches (main, master, dev) require work branches
 
 ### Strict Mode
 
@@ -421,6 +425,23 @@ git merge feature/security
 # Deploys
 ```
 
+## Context Compaction Handling
+
+When Claude's context window fills up, it compacts the conversation history. This can cause agents to lose track of their current work.
+
+CWT automatically detects compaction and alerts agents:
+
+1. **PreCompact hook** creates a marker file before compaction
+2. **UserPromptSubmit hook** detects the marker and shows:
+   ```
+   CONTEXT COMPACTED - STOP and report to coordinator:
+   wt-msg send coord "CONTEXT RESET - Done: [X] | Doing: [Y] | Plan: [Z] | Decisions: [W]"
+   ```
+3. Workers report their state to the coordinator before resuming
+4. Coordinator validates worker understanding and confirms or corrects
+
+This prevents agents from continuing with stale or incorrect context after compaction.
+
 ## Real-Time Communication
 
 CWT includes a Node.js daemon for real-time inter-agent communication via Unix sockets.
@@ -480,6 +501,8 @@ claude-worktrees/
 │   ├── bash-validator.sh   # Command validation (blocks dangerous ops)
 │   ├── file-protector.sh   # Protects sensitive files from workers
 │   ├── init-worker.sh      # Worker initialization hook
+│   ├── mark-compaction.sh  # Creates marker before context compaction
+│   ├── wt-check.sh         # Checks messages/votes, detects compaction
 │   └── statusline.sh       # Status bar hook
 ├── install.sh              # Installation script
 └── README.md
