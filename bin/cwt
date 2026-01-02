@@ -237,8 +237,13 @@ cwt_init() {
   if git rev-parse --git-dir &>/dev/null; then
     work_branch="cwt/$project_name"
 
+    # Verificar se repo tem commits
+    if ! git rev-parse HEAD &>/dev/null; then
+      echo ""
+      echo "ℹ️  Repo sem commits ainda - branch protection desativada"
+      work_branch="$base_branch"
     # Verificar se estamos em branch protegida
-    if [[ "$base_branch" == "main" || "$base_branch" == "master" || "$base_branch" == "dev" || "$base_branch" == "develop" ]]; then
+    elif [[ "$base_branch" == "main" || "$base_branch" == "master" || "$base_branch" == "dev" || "$base_branch" == "develop" ]]; then
       if [[ "$force" != "true" ]]; then
         echo ""
         echo "⚠️  Branch '$base_branch' é protegida."
@@ -247,15 +252,25 @@ cwt_init() {
 
         # Criar branch de trabalho se não existe
         if ! git show-ref --verify --quiet "refs/heads/$work_branch"; then
-          git branch "$work_branch" "$base_branch"
-          echo "   ✅ Branch '$work_branch' criada a partir de '$base_branch'"
+          if git branch "$work_branch" "$base_branch" 2>/dev/null; then
+            echo "   ✅ Branch '$work_branch' criada a partir de '$base_branch'"
+          else
+            echo "   ❌ Falha ao criar branch '$work_branch'"
+            work_branch="$base_branch"
+          fi
         else
           echo "   ℹ️  Branch '$work_branch' já existe"
         fi
 
-        # Checkout para branch de trabalho
-        git checkout "$work_branch"
-        echo "   ✅ Checkout para '$work_branch'"
+        # Checkout para branch de trabalho (só se criada com sucesso)
+        if [[ "$work_branch" != "$base_branch" ]] && git show-ref --verify --quiet "refs/heads/$work_branch"; then
+          if git checkout "$work_branch" 2>/dev/null; then
+            echo "   ✅ Checkout para '$work_branch'"
+          else
+            echo "   ❌ Falha no checkout para '$work_branch'"
+            work_branch="$base_branch"
+          fi
+        fi
       else
         echo "⚠️  --force: Trabalhando diretamente em '$base_branch'"
         work_branch="$base_branch"
