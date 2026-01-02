@@ -71,10 +71,27 @@ detect_coordinator_dir() {
   # 1. Configurado em .cwt/config.json
   if [[ -f "$PROJECT_ROOT/.cwt/config.json" ]]; then
     local coord=$(jq -r '.coordinator // empty' "$PROJECT_ROOT/.cwt/config.json" 2>/dev/null)
-    [[ -n "$coord" && "$coord" != "null" && -d "$PROJECT_ROOT/$coord" ]] && echo "$coord" && return
+    if [[ -n "$coord" && "$coord" != "null" ]]; then
+      # Caso 1: coordinator é subdiretório (estrutura de projeto)
+      if [[ -d "$PROJECT_ROOT/$coord" ]]; then
+        echo "$coord"
+        return
+      fi
+      # Caso 2: PROJECT_ROOT É o coordinator (cwt init dentro do repo)
+      if [[ "$(basename "$PROJECT_ROOT")" == "$coord" && -d "$PROJECT_ROOT/.git" ]]; then
+        echo "."
+        return
+      fi
+    fi
   fi
 
-  # 2. Primeira pasta com .git/ completo (repo, não worktree)
+  # 2. PROJECT_ROOT é um repo git (cwt init dentro do repo)
+  if [[ -d "$PROJECT_ROOT/.git" ]]; then
+    echo "."
+    return
+  fi
+
+  # 3. Primeira pasta com .git/ completo (repo, não worktree)
   for dir in "$PROJECT_ROOT"/*/; do
     local name=$(basename "$dir")
     [[ "$name" == ".cwt" ]] && continue
@@ -288,15 +305,8 @@ fi
 
 if [[ ${#WORKSPACES[@]} -eq 0 ]]; then
   echo ""
-  echo "⚠️  Nenhum worker encontrado!"
-  if [[ "$PROJECT_MODE" == "project" ]]; then
-    echo "   Crie repos/worktrees na pasta do projeto:"
-    echo "   git clone <url> main"
-    echo "   cd main && git worktree add ../feature-x -b feature/x"
-  else
-    echo "   Crie worktrees: git worktree add ../workspace-nome -b feature/nome"
-  fi
-  exit 1
+  echo "ℹ️  Nenhum worker encontrado - iniciando só com coordinator"
+  echo "   Para criar workers depois: wt-init worker1 worker2"
 fi
 
 # Determinar diretório do coordenador
