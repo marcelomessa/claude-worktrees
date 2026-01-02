@@ -87,6 +87,18 @@
         ]
       }
     ],
+    "PreCompact": [
+      {
+        "matcher": "auto",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude-worktrees/hooks/mark-compaction.sh 2>/dev/null || true",
+            "timeout": 1000
+          }
+        ]
+      }
+    ],
     "UserPromptSubmit": [
       {
         "hooks": [

@@ -66,6 +66,28 @@ check_daemon() {
 # STATUS MODE - Minimal output (UserPromptSubmit)
 # =============================================================================
 mode_status() {
+  # Check for compaction marker (created by PreCompact hook)
+  local cwt_root=""
+  if [[ -n "$CWT_PROJECT_ROOT" && -d "$CWT_PROJECT_ROOT/.cwt" ]]; then
+    cwt_root="$CWT_PROJECT_ROOT"
+  else
+    local dir="$PWD"
+    while [[ "$dir" != "/" ]]; do
+      if [[ -d "$dir/.cwt" ]]; then
+        cwt_root="$dir"
+        break
+      fi
+      dir=$(dirname "$dir")
+    done
+  fi
+
+  if [[ -n "$cwt_root" && -f "$cwt_root/.cwt/compacted.marker" ]]; then
+    rm -f "$cwt_root/.cwt/compacted.marker"
+    echo "CONTEXT COMPACTED - STOP and report to coordinator:"
+    echo "wt-msg send coord \"CONTEXT RESET - Done: [X] | Doing: [Y] | Plan: [Z] | Decisions: [W]\""
+    echo ""
+  fi
+
   if ! check_daemon; then
     return
   fi
