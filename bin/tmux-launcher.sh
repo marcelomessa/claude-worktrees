@@ -232,6 +232,20 @@ Waiting for instructions.
 EOF
 }
 
+# Gerar prompt de lembrete para coordinator (--continue)
+get_coordinator_continue_prompt() {
+  local workers_list="$1"
+  cat << EOF
+[SESSION RESUMED] You are the COORDINATOR.
+
+Workers: $workers_list
+
+FIRST: Check messages and worker status:
+  wt-msg check && wt-msg read
+  wt-msg status
+EOF
+}
+
 # Gerar prompt inicial para worker
 get_worker_prompt() {
   local worker_id="$1"
@@ -246,6 +260,16 @@ When done with a task:
   wt-msg send coord "task X completed"
 
 Waiting for tasks from coordinator...
+EOF
+}
+
+# Gerar prompt de lembrete para worker (--continue)
+get_worker_continue_prompt() {
+  local worker_id="$1"
+  cat << EOF
+[SESSION RESUMED] You are worker [$worker_id].
+
+Check messages: wt-msg check && wt-msg read
 EOF
 }
 
@@ -509,13 +533,15 @@ echo "⏳ Aguardando Claude iniciar..."
 # Aguardar e enviar prompt para coordinator
 echo "   ⏳ Aguardando coordinator..."
 if wait_for_claude "$SESSION_NAME" 0; then
-  # Se --continue foi usado e funcionou, não enviar prompt (já tem contexto)
-  if [[ -z "$CONTINUE_FLAG" ]]; then
+  # Sempre enviar prompt - completo ou resumido
+  if [[ -n "$CONTINUE_FLAG" ]]; then
+    COORD_PROMPT=$(get_coordinator_continue_prompt "${WORKSPACES[*]}")
+  else
     COORD_PROMPT=$(get_coordinator_prompt "${WORKSPACES[*]}")
-    tmux send-keys -t "$SESSION_NAME:0" "$COORD_PROMPT"
-    sleep 0.1
-    tmux send-keys -t "$SESSION_NAME:0" "" C-m
   fi
+  tmux send-keys -t "$SESSION_NAME:0" "$COORD_PROMPT"
+  sleep 0.1
+  tmux send-keys -t "$SESSION_NAME:0" "" C-m
   echo "   ✅ Coordinator pronto"
 else
   # Se --continue falhou, reiniciar sem a flag
@@ -542,13 +568,15 @@ for worker_info in "${WORKER_WINDOWS[@]}"; do
   worker_id="${worker_info#*:}"
   echo "   ⏳ Aguardando $worker_id..."
   if wait_for_claude "$SESSION_NAME" "$win_num"; then
-    # Se --continue foi usado e funcionou, não enviar prompt (já tem contexto)
-    if [[ -z "$CONTINUE_FLAG" ]]; then
+    # Sempre enviar prompt - completo ou resumido
+    if [[ -n "$CONTINUE_FLAG" ]]; then
+      WORKER_PROMPT=$(get_worker_continue_prompt "$worker_id")
+    else
       WORKER_PROMPT=$(get_worker_prompt "$worker_id")
-      tmux send-keys -t "$SESSION_NAME:$win_num" "$WORKER_PROMPT"
-      sleep 0.1
-      tmux send-keys -t "$SESSION_NAME:$win_num" "" C-m
     fi
+    tmux send-keys -t "$SESSION_NAME:$win_num" "$WORKER_PROMPT"
+    sleep 0.1
+    tmux send-keys -t "$SESSION_NAME:$win_num" "" C-m
     echo "   ✅ $worker_id pronto"
   else
     # Se --continue falhou, reiniciar sem a flag
