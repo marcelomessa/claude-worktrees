@@ -111,13 +111,20 @@ detect_workers_project() {
   # Se não tem coordenador, não há workers
   [[ -z "$coord_dir" || ! -d "$coord_path" ]] && return
 
+  # Determinar área de busca para worktrees
+  local search_area="$PROJECT_ROOT"
+  # Se PROJECT_ROOT é o próprio repo, worktrees estão no parent
+  if [[ -d "$PROJECT_ROOT/.git" ]]; then
+    search_area=$(dirname "$PROJECT_ROOT")
+  fi
+
   # Listar worktrees do coordenador
   git -C "$coord_path" worktree list --porcelain 2>/dev/null | grep "^worktree " | cut -d' ' -f2- | while read -r wt_path; do
     # Pular o próprio coordenador
     [[ "$wt_path" == "$coord_path" ]] && continue
 
-    # Verificar se está dentro do PROJECT_ROOT
-    if [[ "$wt_path" == "$PROJECT_ROOT"/* ]]; then
+    # Verificar se está na área de busca
+    if [[ "$wt_path" == "$search_area"/* ]]; then
       basename "$wt_path"
     fi
   done
