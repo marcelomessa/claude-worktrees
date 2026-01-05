@@ -246,6 +246,26 @@ FIRST: Check messages and worker status:
 EOF
 }
 
+# Gerar prompt para modo SOLO (coordinator faz tudo)
+get_solo_prompt() {
+  cat << EOF
+SOLO MODE - You are working alone (no workers).
+
+You can implement directly. No need to delegate.
+
+Waiting for instructions.
+EOF
+}
+
+# Gerar prompt para modo SOLO com continue
+get_solo_continue_prompt() {
+  cat << EOF
+[SESSION RESUMED] SOLO MODE - working alone.
+
+Continue your work.
+EOF
+}
+
 # Gerar prompt inicial para worker
 get_worker_prompt() {
   local worker_id="$1"
@@ -317,9 +337,16 @@ echo "════════════════════════�
 echo " Mode: $PROJECT_MODE"
 echo " Session: $SESSION_NAME"
 [[ -n "$CONTINUE_FLAG" ]] && echo " Resume: enabled (--continue)"
+[[ -n "$SOLO_MODE" ]] && echo " Mode: SOLO (coordinator only)"
+[[ -n "$STRICT_MODE" ]] && echo " Mode: STRICT (coordinator read-only)"
 
 # Determinar workers
-if [[ $# -gt 0 ]]; then
+if [[ -n "$SOLO_MODE" ]]; then
+  # Modo solo: sem workers
+  WORKSPACES=()
+  echo ""
+  echo "🎯 Modo SOLO: trabalhando apenas com coordinator"
+elif [[ $# -gt 0 ]]; then
   WORKSPACES=("$@")
 elif [[ "$PROJECT_MODE" == "project" ]]; then
   # Alternativa compatível com bash 3.x (macOS default)
@@ -334,7 +361,7 @@ else
   done < <(detect_workers_legacy)
 fi
 
-if [[ ${#WORKSPACES[@]} -eq 0 ]]; then
+if [[ ${#WORKSPACES[@]} -eq 0 && -z "$SOLO_MODE" ]]; then
   echo ""
   echo "ℹ️  Nenhum worker encontrado - iniciando só com coordinator"
   echo "   Para criar workers depois: wt-init worker1 worker2"
@@ -533,8 +560,14 @@ echo "⏳ Aguardando Claude iniciar..."
 # Aguardar e enviar prompt para coordinator
 echo "   ⏳ Aguardando coordinator..."
 if wait_for_claude "$SESSION_NAME" 0; then
-  # Sempre enviar prompt - completo ou resumido
-  if [[ -n "$CONTINUE_FLAG" ]]; then
+  # Escolher prompt baseado no modo
+  if [[ -n "$SOLO_MODE" ]]; then
+    if [[ -n "$CONTINUE_FLAG" ]]; then
+      COORD_PROMPT=$(get_solo_continue_prompt)
+    else
+      COORD_PROMPT=$(get_solo_prompt)
+    fi
+  elif [[ -n "$CONTINUE_FLAG" ]]; then
     COORD_PROMPT=$(get_coordinator_continue_prompt "${WORKSPACES[*]}")
   else
     COORD_PROMPT=$(get_coordinator_prompt "${WORKSPACES[*]}")
@@ -549,7 +582,11 @@ else
     echo "   ⚠️  Coordinator: --continue falhou, reiniciando..."
     tmux send-keys -t "$SESSION_NAME:0" "claude ${SKIP_PERMISSIONS:+--dangerously-skip-permissions}" Enter
     if wait_for_claude "$SESSION_NAME" 0; then
-      COORD_PROMPT=$(get_coordinator_prompt "${WORKSPACES[*]}")
+      if [[ -n "$SOLO_MODE" ]]; then
+        COORD_PROMPT=$(get_solo_prompt)
+      else
+        COORD_PROMPT=$(get_coordinator_prompt "${WORKSPACES[*]}")
+      fi
       tmux send-keys -t "$SESSION_NAME:0" "$COORD_PROMPT"
       sleep 0.1
       tmux send-keys -t "$SESSION_NAME:0" "" C-m

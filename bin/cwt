@@ -72,6 +72,8 @@ Opções:
   -a, --list-all   Lista TODAS as sessões CWT (todos projetos)
   -k, --kill       Encerra sessão do projeto atual
   -s, --status     Mostra status dos workers
+  --solo           Modo solo: só coordinator, sem workers
+  --strict         Modo strict: coordinator não pode editar código
 
 Estrutura de Projeto:
   ~/projects/meu-projeto/
@@ -330,6 +332,8 @@ EOF
 
 # Parse arguments
 CONTINUE_FLAG=""
+SOLO_MODE=""
+STRICT_MODE=""
 WORKERS=()
 
 # Primeiro argumento pode ser comando
@@ -398,6 +402,14 @@ while [[ $# -gt 0 ]]; do
       export BASE_BRANCH="$2"
       shift 2
       ;;
+    --solo)
+      SOLO_MODE="true"
+      shift
+      ;;
+    --strict)
+      STRICT_MODE="true"
+      shift
+      ;;
     -*)
       echo "Opção desconhecida: $1"
       echo "Use 'cwt --help' para ver opções"
@@ -424,6 +436,8 @@ fi
 
 # Iniciar nova sessão
 export CONTINUE_FLAG
+export SOLO_MODE
+export STRICT_MODE
 export SESSION_NAME
 export CWT_PROJECT_ROOT=$(find_cwt_root)
 exec "$CWT_DIR/tmux-launcher.sh" "${WORKERS[@]}"
