@@ -25,6 +25,8 @@ resolve_symlink() {
 
 SCRIPT_PATH=$(resolve_symlink "$0")
 CWT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
+CWT_INSTALL_DIR="$(dirname "$CWT_DIR")"
+CWT_VERSION=$(cat "$CWT_INSTALL_DIR/VERSION" 2>/dev/null || echo "unknown")
 
 # Detectar .cwt/ subindo a árvore de diretórios
 find_cwt_root() {
@@ -66,6 +68,7 @@ Comandos:
 
 Opções:
   -h, --help       Mostra esta ajuda
+  -v, --version    Mostra versão instalada
   -c, --continue   Resume sessões Claude anteriores
   -b, --base       Branch base do coordenador (para merges)
   -l, --list       Lista sessões ativas
@@ -381,6 +384,11 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     -h|--help)
       print_help
+      exit 0
+      ;;
+    -v|--version)
+      echo "CWT - Claude WorkTrees v$CWT_VERSION"
+      echo "Install: $CWT_INSTALL_DIR"
       exit 0
       ;;
     -l|--list)
