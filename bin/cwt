@@ -116,9 +116,24 @@ cwt_update() {
     exit 1
   fi
 
+  local project_name=$(basename "$cwt_root")
+  local session_name="cwt-$project_name"
+
   echo "═══════════════════════════════════════"
-  echo " CWT Update: $(basename "$cwt_root")"
+  echo " CWT Update: $project_name"
   echo "═══════════════════════════════════════"
+
+  # Verificar se há sessão ativa
+  if tmux has-session -t "$session_name" 2>/dev/null; then
+    echo ""
+    echo "⚠️  Sessão '$session_name' está ativa"
+    echo "   Para aplicar todas as mudanças, reinicie após o update:"
+    echo "   cwt --kill && cwt -c"
+    echo ""
+    read -p "Continuar com update? [Y/n] " -n 1 -r
+    echo
+    [[ $REPLY =~ ^[Nn]$ ]] && exit 0
+  fi
 
   # Ler config
   local config_file="$cwt_root/.cwt/config.json"
@@ -130,6 +145,12 @@ cwt_update() {
     echo "📦 Coordinator: $coordinator"
     local claude_dir="$cwt_root/$coordinator/.claude"
     mkdir -p "$claude_dir"
+
+    # CLAUDE.md
+    if [[ -f "$install_dir/templates/CLAUDE.coord.md" ]]; then
+      cp "$install_dir/templates/CLAUDE.coord.md" "$cwt_root/$coordinator/CLAUDE.md"
+      echo "   ✅ CLAUDE.md atualizado"
+    fi
 
     # settings.json
     if [[ -f "$install_dir/templates/settings.coord.json" ]]; then
@@ -154,6 +175,12 @@ cwt_update() {
       echo "📦 Worker: $worker_name"
       local claude_dir="$worker_path/.claude"
       mkdir -p "$claude_dir"
+
+      # CLAUDE.md com WORKER_ID correto
+      if [[ -f "$install_dir/templates/CLAUDE.worker.md" ]]; then
+        sed "s/WORKER_ID/$worker_name/g" "$install_dir/templates/CLAUDE.worker.md" > "$worker_path/CLAUDE.md"
+        echo "   ✅ CLAUDE.md atualizado (WORKER_ID: $worker_name)"
+      fi
 
       # settings.json com WORKER_ID correto
       if [[ -f "$install_dir/templates/settings.worker.json" ]]; then

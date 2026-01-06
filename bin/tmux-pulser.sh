@@ -44,15 +44,42 @@ fi
 # Token optimization: longer intervals to reduce unnecessary checks
 INTERVAL="${PULSER_INTERVAL:-120}"        # Check every 2 minutes (was 30s)
 IDLE_THRESHOLD="${IDLE_THRESHOLD:-180}"   # Worker idle threshold: 3 minutes (was 60s)
+BILLING_INTERVAL="${BILLING_INTERVAL:-300}" # Update billing every 5 minutes
+BILLING_CACHE="$HOME/.cwt-billing-cache"
+LAST_BILLING_UPDATE=0
+
+# Resolve script directory for wt-billing
+SCRIPT_PATH="$0"
+while [[ -L "$SCRIPT_PATH" ]]; do
+  SCRIPT_DIR=$(dirname "$SCRIPT_PATH")
+  SCRIPT_PATH=$(readlink "$SCRIPT_PATH")
+  [[ "$SCRIPT_PATH" != /* ]] && SCRIPT_PATH="$SCRIPT_DIR/$SCRIPT_PATH"
+done
+CWT_BIN_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
+WT_BILLING="$CWT_BIN_DIR/../lib/wt-billing"
 
 log() {
   echo "[$(date '+%H:%M:%S')] $*" >> "$LOG_FILE"
+}
+
+update_billing_cache() {
+  local now=$(date +%s)
+  local elapsed=$((now - LAST_BILLING_UPDATE))
+
+  if [[ $elapsed -ge $BILLING_INTERVAL ]]; then
+    if [[ -x "$WT_BILLING" ]]; then
+      "$WT_BILLING" total > "$BILLING_CACHE" 2>/dev/null &
+      LAST_BILLING_UPDATE=$now
+      log "💰 Billing cache atualizado"
+    fi
+  fi
 }
 
 > "$LOG_FILE"
 log "🔄 Tmux Pulser iniciado"
 log "   Session: $SESSION_NAME"
 log "   Interval: ${INTERVAL}s"
+log "   Billing interval: ${BILLING_INTERVAL}s"
 
 extract_datetime() {
   local content="$1"
@@ -126,11 +153,23 @@ check_window() {
 
   log "   [$window_num] $window_name: idle=${idle_secs}s waiting=$waiting_input busy=$is_busy pending=$has_pending_input"
 
-  # Se há input pendente (texto digitado esperando Enter), enviar Enter
+  # Se há input pendente (texto digitado esperando Enter)
+  # TODO: Detectar se é autosugestão do Claude (tem códigos ANSI dim/itálico)
+  # Por enquanto: workers executam após threshold, coordinator nunca
   if [[ "$has_pending_input" == "true" ]]; then
-    log "   ➡️  Enviando Enter para $window_name (input pendente)"
-    tmux send-keys -t "$SESSION_NAME:$window_num" "" C-m
-    return 0
+    if [[ "$window_name" == "coordinator" ]]; then
+      # Coordinator: nunca auto-submeter input pendente (pode ser autosugestão)
+      log "   ⏸️  Input pendente em coordinator - aguardando humano"
+      return 1
+    elif [[ $idle_secs -gt $IDLE_THRESHOLD ]]; then
+      # Worker: submeter após threshold (provavelmente comando do coordinator)
+      log "   ➡️  Enviando Enter para $window_name (input pendente + idle)"
+      tmux send-keys -t "$SESSION_NAME:$window_num" "" C-m
+      return 0
+    else
+      log "   ⏳  Input pendente em $window_name - aguardando threshold"
+      return 1
+    fi
   fi
 
   # Threshold diferente para coordinator (operado por humano) vs workers (autônomos)
@@ -177,6 +216,9 @@ while true; do
     log "❌ Sessão '$SESSION_NAME' não encontrada. Encerrando."
     exit 1
   fi
+
+  # Update billing cache periodically
+  update_billing_cache
 
   log "🔍 Verificando agentes..."
 

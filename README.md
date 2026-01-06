@@ -375,7 +375,7 @@ cwt             # Reconnect to existing session
 ```bash
 # Send message
 wt-msg send frontend "Implement the login form"
-wt-msg send coord "Task completed, ready for merge"
+wt-msg send coordinator "Task completed, ready for merge"
 
 # Broadcast to all
 wt-msg broadcast "Breaking change in API"
@@ -410,7 +410,7 @@ Each worker:
 2. Uses subagents (Explore, Plan) to understand scope
 3. Implements changes in their worktree
 4. Commits to their feature branch
-5. Notifies coordinator: `wt-msg send coord "login UI done"`
+5. Notifies coordinator: `wt-msg send coordinator "login UI done"`
 
 ### 3. Integration Phase (Coordinator)
 
@@ -435,7 +435,7 @@ CWT automatically detects compaction and alerts agents:
 2. **UserPromptSubmit hook** detects the marker and shows:
    ```
    CONTEXT COMPACTED - STOP and report to coordinator:
-   wt-msg send coord "CONTEXT RESET - Done: [X] | Doing: [Y] | Plan: [Z] | Decisions: [W]"
+   wt-msg send coordinator "CONTEXT RESET - Done: [X] | Doing: [Y] | Plan: [Z] | Decisions: [W]"
    ```
 3. Workers report their state to the coordinator before resuming
 4. Coordinator validates worker understanding and confirms or corrects

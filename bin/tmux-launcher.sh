@@ -277,7 +277,7 @@ Check for tasks:
   wt-msg read
 
 When done with a task:
-  wt-msg send coord "task X completed"
+  wt-msg send coordinator "task X completed"
 
 Waiting for tasks from coordinator...
 EOF

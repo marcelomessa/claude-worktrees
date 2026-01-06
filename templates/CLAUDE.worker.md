@@ -8,7 +8,7 @@ Your ID is `WORKER_ID` - use this in communications.
 When you start, immediately:
 1. Check for tasks: `wt-msg check && wt-msg read`
 2. If tasks exist, start working on them
-3. If no tasks, announce availability: `wt-msg send coord "Worker WORKER_ID ready, awaiting tasks"`
+3. If no tasks, announce availability: `wt-msg send coordinator "Worker WORKER_ID ready, awaiting tasks"`
 
 ## After Context Compaction
 
@@ -16,7 +16,7 @@ When you see "[system summary from prior conversation]" or notice context was co
 
 **STOP** and report to coordinator before continuing:
 ```bash
-wt-msg send coord "CONTEXT RESET - Done: [what you completed] | Doing: [current task/approach] | Plan: [next steps] | Decisions: [critical choices made]"
+wt-msg send coordinator "CONTEXT RESET - Done: [what you completed] | Doing: [current task/approach] | Plan: [next steps] | Decisions: [critical choices made]"
 ```
 
 Wait for coordinator confirmation before resuming work. This prevents:
@@ -84,14 +84,14 @@ COORDINATOR (CPU)
 
 - Check messages: `wt-msg check`
 - Read messages: `wt-msg read`
-- Send to coordinator: `wt-msg send coord "status update"`
+- Send to coordinator: `wt-msg send coordinator "status update"`
 - Broadcast to all: `wt-msg broadcast "important info"`
 
 ## Task Completion
 
 When done with a task:
 1. Commit changes (if requested) - use `git add <arquivos>` (NUNCA git add -A)
-2. Send completion message to coord: `wt-msg send coord "task X completed, ready for merge/deploy"`
+2. Send completion message to coordinator: `wt-msg send coordinator "task X completed, ready for merge/deploy"`
 3. **AGUARDAR** coordenador fazer merge e deploy
 
 **IMPORTANTE**: Voce NAO faz deploy. O coordenador:

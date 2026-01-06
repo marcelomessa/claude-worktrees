@@ -84,7 +84,7 @@ mode_status() {
   if [[ -n "$cwt_root" && -f "$cwt_root/.cwt/compacted.marker" ]]; then
     rm -f "$cwt_root/.cwt/compacted.marker"
     echo "CONTEXT COMPACTED - STOP and report to coordinator:"
-    echo "wt-msg send coord \"CONTEXT RESET - Done: [X] | Doing: [Y] | Plan: [Z] | Decisions: [W]\""
+    echo "wt-msg send coordinator \"CONTEXT RESET - Done: [X] | Doing: [Y] | Plan: [Z] | Decisions: [W]\""
     echo ""
   fi
 

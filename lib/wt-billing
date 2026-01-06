@@ -1,0 +1,168 @@
+#!/bin/bash
+# =============================================================================
+# WT-BILLING - Show session/project billing from ccusage
+# =============================================================================
+# Usage:
+#   wt-billing              # Show today's cost for current project
+#   wt-billing all          # Show all projects today
+#   wt-billing total        # Show total cost only (for status bar)
+# =============================================================================
+
+# Detectar .cwt/ subindo a árvore de diretórios
+find_cwt_root() {
+  if [[ -n "$CWT_PROJECT_ROOT" && -d "$CWT_PROJECT_ROOT/.cwt" ]]; then
+    echo "$CWT_PROJECT_ROOT"
+    return 0
+  fi
+
+  local dir="$PWD"
+  while [[ "$dir" != "/" ]]; do
+    if [[ -d "$dir/.cwt" ]]; then
+      echo "$dir"
+      return 0
+    fi
+    dir=$(dirname "$dir")
+  done
+
+  return 1
+}
+
+CWT_ROOT=$(find_cwt_root)
+TODAY=$(date +%Y%m%d)
+
+# Check if ccusage is available
+if ! command -v npx &>/dev/null; then
+  echo "Error: npx not found"
+  exit 1
+fi
+
+case "${1:-project}" in
+  total)
+    # Minimal output for status bar
+    RESULT=$(npx ccusage -s "$TODAY" -j --offline 2>/dev/null)
+    if [[ -n "$RESULT" ]]; then
+      COST=$(echo "$RESULT" | jq -r '.totals.totalCost // 0' 2>/dev/null)
+      if [[ -n "$COST" && "$COST" != "null" ]]; then
+        # Format with python to avoid locale issues
+        echo "$COST" | python3 -c "import sys; print(f'\${float(sys.stdin.read().strip()):.2f}')"
+      else
+        echo "\$0.00"
+      fi
+    else
+      echo "\$0.00"
+    fi
+    ;;
+
+  all)
+    # Show all projects
+    echo "CWT Billing - All Projects"
+    echo "Date: $(date +%Y-%m-%d)"
+    echo ""
+
+    RESULT=$(npx ccusage -i -s "$TODAY" -j --offline 2>/dev/null)
+    if [[ -z "$RESULT" ]]; then
+      echo "No data available"
+      exit 1
+    fi
+
+    # Parse and display
+    echo "$RESULT" | python3 -c "
+import sys, json
+
+try:
+    data = json.load(sys.stdin)
+    projects = data.get('projects', {})
+    totals = data.get('totals', {})
+
+    if not projects:
+        print('No projects found')
+        sys.exit(0)
+
+    # Extract project name from path
+    for path, entries in sorted(projects.items()):
+        # Get last part of path as name
+        name = path.split('-')[-1] if '-' in path else path
+        # Or get meaningful part
+        parts = path.replace('-Users-', '').split('-')
+        if len(parts) >= 3:
+            name = parts[-1]  # Last component
+
+        total_cost = sum(e.get('totalCost', 0) for e in entries)
+        total_tokens = sum(e.get('totalTokens', 0) for e in entries)
+
+        print(f'  {name:<20} \${total_cost:>8.2f}  ({total_tokens:,} tokens)')
+
+    print('  ' + '-' * 42)
+    print(f'  {\"Total\":<20} \${totals.get(\"totalCost\", 0):>8.2f}  ({totals.get(\"totalTokens\", 0):,} tokens)')
+
+except Exception as e:
+    print(f'Error: {e}')
+    sys.exit(1)
+"
+    ;;
+
+  project|*)
+    # Show current project
+    if [[ -z "$CWT_ROOT" ]]; then
+      echo "No CWT project found"
+      echo "Run from a CWT project directory"
+      exit 1
+    fi
+
+    PROJECT_NAME=$(basename "$CWT_ROOT")
+    echo "CWT Billing - $PROJECT_NAME"
+    echo "Date: $(date +%Y-%m-%d)"
+    echo ""
+
+    RESULT=$(npx ccusage -i -s "$TODAY" -j --offline 2>/dev/null)
+    if [[ -z "$RESULT" ]]; then
+      echo "No data available"
+      exit 1
+    fi
+
+    # Filter and display for current project
+    echo "$RESULT" | python3 -c "
+import sys, json, os
+
+try:
+    data = json.load(sys.stdin)
+    projects = data.get('projects', {})
+
+    cwt_root = os.environ.get('CWT_ROOT', '')
+    project_name = os.path.basename(cwt_root) if cwt_root else ''
+
+    found = False
+    project_total = 0
+    project_tokens = 0
+
+    for path, entries in projects.items():
+        # Check if this path belongs to our project
+        if project_name and project_name in path:
+            found = True
+
+            # Extract worker/component name
+            parts = path.split('-')
+            name = parts[-1] if parts else 'unknown'
+
+            cost = sum(e.get('totalCost', 0) for e in entries)
+            tokens = sum(e.get('totalTokens', 0) for e in entries)
+
+            project_total += cost
+            project_tokens += tokens
+
+            print(f'  {name:<20} \${cost:>8.2f}  ({tokens:,} tokens)')
+
+    if found:
+        print('  ' + '-' * 42)
+        print(f'  {\"Total\":<20} \${project_total:>8.2f}  ({project_tokens:,} tokens)')
+    else:
+        # Show total if no specific project match
+        totals = data.get('totals', {})
+        print(f'  Total today: \${totals.get(\"totalCost\", 0):.2f}')
+
+except Exception as e:
+    print(f'Error: {e}')
+    sys.exit(1)
+"
+    ;;
+esac
