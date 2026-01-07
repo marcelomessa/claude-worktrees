@@ -107,6 +107,15 @@ echo "$COMMAND" | grep -qE "mkfs\." && block "mkfs proibido"
 echo "$COMMAND" | grep -qE "dd\s+if=.*of=/dev" && block "dd to device"
 echo "$COMMAND" | grep -qE "git\s+add\s+(-A|--all|\s\.(\s|$))" && block "git add -A/. - use arquivos específicos"
 
+# Git destructive - discard changes without commit
+# These commands cause IRREVERSIBLE data loss. Block and guide to safer alternatives.
+echo "$COMMAND" | grep -qE "git\s+checkout\s+--\s" && block "PERDA DE DADOS: git checkout -- descarta mudanças permanentemente. Use 'git stash' para salvar, ou 'git commit' para preservar. Se realmente precisa descartar, AGUARDE o usuário autorizar."
+echo "$COMMAND" | grep -qE "git\s+checkout\s+\.\s*$" && block "PERDA DE DADOS: git checkout . descarta TODAS as mudanças. Use 'git stash' ou 'git commit' primeiro. AGUARDE o usuário se precisar descartar."
+echo "$COMMAND" | grep -qE "git\s+restore\s+--staged" && block "CUIDADO: git restore --staged remove do stage. Use 'git diff --staged' para revisar antes. AGUARDE o usuário confirmar."
+echo "$COMMAND" | grep -qE "git\s+restore\s+[^-]" && block "PERDA DE DADOS: git restore descarta mudanças permanentemente. Use 'git stash' para salvar, ou 'git diff' para revisar. AGUARDE o usuário autorizar."
+echo "$COMMAND" | grep -qE "git\s+clean\s+-[fd]" && block "PERDA DE DADOS: git clean remove arquivos não rastreados permanentemente. Liste com 'git clean -n' primeiro. AGUARDE o usuário autorizar."
+echo "$COMMAND" | grep -qE "git\s+stash\s+drop" && block "PERDA DE DADOS: git stash drop remove stash permanentemente. Use 'git stash list' e 'git stash show' para revisar. AGUARDE o usuário autorizar."
+
 # =============================================================================
 # APPLY DENY FROM settings.json (enforce even in skip-permissions mode)
 # =============================================================================
