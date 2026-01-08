@@ -168,34 +168,68 @@ cwt_update() {
   fi
 
   # Atualizar workers
+  # Primeiro tenta workers.txt, se vazio detecta automaticamente
   local workers_file="$cwt_root/.cwt/workers.txt"
-  if [[ -f "$workers_file" ]]; then
+  local workers_found=()
+
+  # Ler do workers.txt se existir e não estiver vazio
+  if [[ -f "$workers_file" && -s "$workers_file" ]]; then
     while IFS= read -r worker_path; do
-      [[ -z "$worker_path" || ! -d "$worker_path" ]] && continue
-
-      local worker_name=$(basename "$worker_path")
-      echo ""
-      echo "📦 Worker: $worker_name"
-      local claude_dir="$worker_path/.claude"
-      mkdir -p "$claude_dir"
-
-      # CLAUDE.md com WORKER_ID correto
-      if [[ -f "$install_dir/templates/CLAUDE.worker.md" ]]; then
-        sed "s/WORKER_ID/$worker_name/g" "$install_dir/templates/CLAUDE.worker.md" > "$worker_path/CLAUDE.md"
-        echo "   ✅ CLAUDE.md atualizado (WORKER_ID: $worker_name)"
-      fi
-
-      # settings.json com WORKER_ID correto
-      if [[ -f "$install_dir/templates/settings.worker.json" ]]; then
-        sed "s/WORKER_NAME/$worker_name/g" "$install_dir/templates/settings.worker.json" > "$claude_dir/settings.json"
-        echo "   ✅ settings.json atualizado (WORKER_ID: $worker_name)"
-      fi
-
-      # Symlinks para hooks
-      ln -sf "$install_dir/hooks/wt-check.sh" "$claude_dir/wt-check.sh"
-      ln -sf "$install_dir/hooks/wt-sync.sh" "$claude_dir/wt-sync.sh"
-      echo "   ✅ hooks symlinks atualizados"
+      [[ -n "$worker_path" && -d "$worker_path" ]] && workers_found+=("$worker_path")
     done < "$workers_file"
+  fi
+
+  # Se não encontrou workers no arquivo, detectar automaticamente
+  if [[ ${#workers_found[@]} -eq 0 ]]; then
+    echo ""
+    echo "ℹ️  workers.txt vazio, detectando worktrees automaticamente..."
+
+    # Detectar diretórios workspace-* no projeto
+    for dir in "$cwt_root"/workspace-*; do
+      [[ -d "$dir" ]] && workers_found+=("$dir")
+    done
+
+    # Detectar worktrees do git se coordinator é um repo
+    if [[ -n "$coordinator" && -d "$cwt_root/$coordinator/.git" ]]; then
+      while IFS= read -r wt_line; do
+        local wt_path=$(echo "$wt_line" | awk '{print $1}')
+        # Ignorar o próprio coordinator
+        [[ "$wt_path" != "$cwt_root/$coordinator" && -d "$wt_path" ]] && workers_found+=("$wt_path")
+      done < <(git -C "$cwt_root/$coordinator" worktree list 2>/dev/null | tail -n +2)
+    fi
+  fi
+
+  # Atualizar cada worker encontrado
+  for worker_path in "${workers_found[@]}"; do
+    [[ ! -d "$worker_path" ]] && continue
+
+    local worker_name=$(basename "$worker_path")
+    echo ""
+    echo "📦 Worker: $worker_name"
+    local claude_dir="$worker_path/.claude"
+    mkdir -p "$claude_dir"
+
+    # CLAUDE.md com WORKER_ID correto
+    if [[ -f "$install_dir/templates/CLAUDE.worker.md" ]]; then
+      sed "s/WORKER_ID/$worker_name/g" "$install_dir/templates/CLAUDE.worker.md" > "$worker_path/CLAUDE.md"
+      echo "   ✅ CLAUDE.md atualizado (WORKER_ID: $worker_name)"
+    fi
+
+    # settings.json com WORKER_ID correto
+    if [[ -f "$install_dir/templates/settings.worker.json" ]]; then
+      sed "s/WORKER_NAME/$worker_name/g" "$install_dir/templates/settings.worker.json" > "$claude_dir/settings.json"
+      echo "   ✅ settings.json atualizado (WORKER_ID: $worker_name)"
+    fi
+
+    # Symlinks para hooks
+    ln -sf "$install_dir/hooks/wt-check.sh" "$claude_dir/wt-check.sh"
+    ln -sf "$install_dir/hooks/wt-sync.sh" "$claude_dir/wt-sync.sh"
+    echo "   ✅ hooks symlinks atualizados"
+  done
+
+  if [[ ${#workers_found[@]} -eq 0 ]]; then
+    echo ""
+    echo "ℹ️  Nenhum worker encontrado"
   fi
 
   echo ""
