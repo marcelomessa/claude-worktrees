@@ -13,6 +13,7 @@
 # Parse arguments (preserve exported values from cwt)
 CONTINUE_FLAG="${CONTINUE_FLAG:-}"
 SKIP_PERMISSIONS="${SKIP_PERMISSIONS:-1}"  # Default: skip permissions, use bash-validator
+CWT_SESSION_NAME="${CWT_SESSION_NAME:-}"   # Nome da sessão CWT (para agrupar sessões Claude)
 WORKSPACES_ARGS=()
 
 while [[ $# -gt 0 ]]; do
@@ -21,9 +22,17 @@ while [[ $# -gt 0 ]]; do
       CONTINUE_FLAG="--continue"
       shift
       ;;
+    --resume|-r)
+      CONTINUE_FLAG="--resume"
+      shift
+      ;;
     --strict)
       SKIP_PERMISSIONS=""  # Use Claude's native permissions
       shift
+      ;;
+    --session|-n)
+      CWT_SESSION_NAME="$2"
+      shift 2
       ;;
     *)
       WORKSPACES_ARGS+=("$1")
@@ -34,6 +43,96 @@ done
 
 # Restore positional parameters (workspaces only)
 set -- "${WORKSPACES_ARGS[@]}"
+
+# =============================================================================
+# SESSION MANAGEMENT - Agrupa sessões Claude de todos os worktrees
+# =============================================================================
+
+generate_uuid() {
+  # Gera UUID v4
+  if command -v uuidgen &>/dev/null; then
+    uuidgen | tr '[:upper:]' '[:lower:]'
+  else
+    # Fallback usando /dev/urandom
+    od -x /dev/urandom | head -1 | awk '{print $2$3"-"$4"-4"substr($5,2)"-"substr($6,1,1)"0"substr($6,2)"-"$7$8$9}'
+  fi
+}
+
+# Arquivo de sessões
+get_sessions_dir() {
+  local project_root="$1"
+  echo "$project_root/.cwt/sessions"
+}
+
+# Salvar sessão com UUIDs de todos os worktrees
+save_cwt_session() {
+  local sessions_dir=$(get_sessions_dir "$PROJECT_ROOT")
+  local session_file="$sessions_dir/${CWT_SESSION_NAME}.json"
+
+  mkdir -p "$sessions_dir"
+
+  # Criar JSON com os session IDs
+  echo "{" > "$session_file"
+  echo "  \"name\": \"$CWT_SESSION_NAME\"," >> "$session_file"
+  echo "  \"created\": \"$(date -Iseconds)\"," >> "$session_file"
+  echo "  \"sessions\": {" >> "$session_file"
+
+  local first=true
+  for worker_id in "${!CLAUDE_SESSION_IDS[@]}"; do
+    if [[ "$first" == "true" ]]; then
+      first=false
+    else
+      echo "," >> "$session_file"
+    fi
+    printf "    \"%s\": \"%s\"" "$worker_id" "${CLAUDE_SESSION_IDS[$worker_id]}" >> "$session_file"
+  done
+
+  echo "" >> "$session_file"
+  echo "  }" >> "$session_file"
+  echo "}" >> "$session_file"
+
+  echo "💾 Sessão '$CWT_SESSION_NAME' salva em $session_file"
+}
+
+# Carregar sessão existente
+load_cwt_session() {
+  local sessions_dir=$(get_sessions_dir "$PROJECT_ROOT")
+  local session_file="$sessions_dir/${CWT_SESSION_NAME}.json"
+
+  if [[ ! -f "$session_file" ]]; then
+    echo "❌ Sessão '$CWT_SESSION_NAME' não encontrada"
+    echo "   Sessões disponíveis:"
+    ls -1 "$sessions_dir"/*.json 2>/dev/null | xargs -I{} basename {} .json | sed 's/^/     /'
+    return 1
+  fi
+
+  # Carregar session IDs do JSON
+  while IFS=': ' read -r key value; do
+    key=$(echo "$key" | tr -d '"' | xargs)
+    value=$(echo "$value" | tr -d '",\n' | xargs)
+    [[ -n "$key" && -n "$value" && "$key" != "name" && "$key" != "created" && "$key" != "{" && "$key" != "}" && "$key" != "sessions" ]] && \
+      CLAUDE_SESSION_IDS["$key"]="$value"
+  done < <(cat "$session_file")
+
+  echo "📂 Sessão '$CWT_SESSION_NAME' carregada"
+  return 0
+}
+
+# Obter ou gerar session ID para um worktree
+get_session_id() {
+  local worker_id="$1"
+
+  if [[ -n "${CLAUDE_SESSION_IDS[$worker_id]:-}" ]]; then
+    echo "${CLAUDE_SESSION_IDS[$worker_id]}"
+  else
+    local new_id=$(generate_uuid)
+    CLAUDE_SESSION_IDS["$worker_id"]="$new_id"
+    echo "$new_id"
+  fi
+}
+
+# Array associativo para guardar session IDs
+declare -A CLAUDE_SESSION_IDS
 
 # Usar sessão do ambiente ou padrão
 SESSION_NAME="${SESSION_NAME:-cwt}"
@@ -387,6 +486,16 @@ echo " State: $STATE_FILE"
 echo " Mouse scroll: enabled"
 echo "═══════════════════════════════════════════════════════════════"
 
+# ==========================================================================
+# BRANCH CHECK ON STARTUP
+# ==========================================================================
+WT_BRANCH="$CWT_BIN_DIR/../lib/wt-branch"
+if [[ -x "$WT_BRANCH" ]]; then
+  echo ""
+  "$WT_BRANCH" check
+  echo ""
+fi
+
 # Verificar se sessão já existe
 if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
   echo "⚠️  Sessão '$SESSION_NAME' já existe."
@@ -494,7 +603,13 @@ tmux send-keys -t "$SESSION_NAME:0" "cd '$COORD_DIR'" Enter
 sleep 0.2
 tmux send-keys -t "$SESSION_NAME:0" "echo '🎯 COORDINATOR - $COORD_DIR_NAME ($CURRENT_BRANCH)'" Enter
 sleep 0.2
-tmux send-keys -t "$SESSION_NAME:0" "claude ${SKIP_PERMISSIONS:+--dangerously-skip-permissions} $CONTINUE_FLAG" Enter
+# Determinar flags do Claude
+CLAUDE_FLAGS="${SKIP_PERMISSIONS:+--dangerously-skip-permissions}"
+if [[ -n "$CONTINUE_FLAG" ]]; then
+  CLAUDE_FLAGS="$CLAUDE_FLAGS --continue"
+fi
+
+tmux send-keys -t "$SESSION_NAME:0" "claude $CLAUDE_FLAGS" Enter
 
 # Criar window para cada worker
 WINDOW_NUM=1

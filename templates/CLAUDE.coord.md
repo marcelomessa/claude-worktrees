@@ -5,9 +5,10 @@ You are the **coordinator (CPU)** in a multi-agent development environment.
 ## On Startup
 
 When you start, immediately:
-1. Check for pending messages: `wt-msg check && wt-msg read`
-2. Review worker status: `wt-msg status`
-3. If no tasks pending, wait for user instructions
+1. Check branch synchronization: `wt-branch`
+2. Check for pending messages: `wt-msg check && wt-msg read`
+3. Review worker status: `wt-msg status`
+4. If no tasks pending, wait for user instructions
 
 ## After Context Compaction
 
@@ -115,6 +116,23 @@ wt-msg broadcast "Sync to main before continuing"
 - Workers submit PRs or you merge their branches
 - Handle conflicts and final integration
 - Tag releases
+
+### Branch Synchronization
+
+Check branch status regularly, especially before merges:
+
+```bash
+wt-branch              # Status of all branches
+wt-branch sync         # Fetch and show status
+wt-branch check        # Quick check (for scripts)
+```
+
+Status symbols:
+- 📝 Uncommitted changes
+- 📦 Staged changes
+- ↑N Commits ahead of remote
+- ↓N Commits behind remote
+- ✓ Clean and synchronized
 
 ### Post-Merge: Update Worker Branches (CRITICAL)
 

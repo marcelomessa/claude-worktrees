@@ -1,0 +1,308 @@
+#!/bin/bash
+# =============================================================================
+# WT-BRANCH - Branch synchronization and status for CWT
+# =============================================================================
+# Shows branch status of all workers and helps with synchronization.
+#
+# Usage:
+#   wt-branch [status]     Show branch status of all workers
+#   wt-branch sync         Fetch and show divergence
+#   wt-branch check        Quick check (for startup/hooks)
+# =============================================================================
+
+# Detectar .cwt/ subindo a árvore de diretórios
+find_cwt_root() {
+  if [[ -n "$CWT_PROJECT_ROOT" && -d "$CWT_PROJECT_ROOT/.cwt" ]]; then
+    echo "$CWT_PROJECT_ROOT"
+    return 0
+  fi
+
+  local dir="$PWD"
+  while [[ "$dir" != "/" ]]; do
+    if [[ -d "$dir/.cwt" ]]; then
+      echo "$dir"
+      return 0
+    fi
+    dir=$(dirname "$dir")
+  done
+
+  return 1
+}
+
+CWT_ROOT=$(find_cwt_root)
+if [[ -z "$CWT_ROOT" ]]; then
+  echo "Erro: Não está em um projeto CWT"
+  exit 1
+fi
+
+WORKERS_FILE="$CWT_ROOT/.cwt/workers.txt"
+
+# Detectar coordenador
+detect_coordinator() {
+  if [[ -f "$CWT_ROOT/.cwt/config.json" ]]; then
+    local coord=$(jq -r '.coordinator // empty' "$CWT_ROOT/.cwt/config.json" 2>/dev/null)
+    if [[ -n "$coord" && "$coord" != "null" ]]; then
+      if [[ -d "$CWT_ROOT/$coord" ]]; then
+        echo "$CWT_ROOT/$coord"
+        return
+      fi
+    fi
+  fi
+
+  # PROJECT_ROOT é o próprio repo?
+  if [[ -d "$CWT_ROOT/.git" ]]; then
+    echo "$CWT_ROOT"
+    return
+  fi
+
+  # Primeira pasta com .git/ completo
+  for dir in "$CWT_ROOT"/*/; do
+    local name=$(basename "$dir")
+    [[ "$name" == ".cwt" ]] && continue
+    if [[ -d "$dir/.git" ]]; then
+      echo "$dir"
+      return
+    fi
+  done
+}
+
+# Obter workers
+get_workers() {
+  if [[ -f "$WORKERS_FILE" ]]; then
+    while IFS= read -r line; do
+      [[ -n "$line" ]] && echo "$line"
+    done < "$WORKERS_FILE"
+  fi
+
+  # Também detectar worktrees do git
+  local coord=$(detect_coordinator)
+  if [[ -n "$coord" ]]; then
+    git -C "$coord" worktree list --porcelain 2>/dev/null | grep "^worktree " | cut -d' ' -f2- | while read -r wt_path; do
+      [[ "$wt_path" == "$coord" ]] && continue
+      basename "$wt_path"
+    done
+  fi
+}
+
+# Formatar status de uma branch
+format_status() {
+  local dir="$1"
+  local name="$2"
+
+  if [[ ! -d "$dir" ]]; then
+    printf "   %-15s ❌ não encontrado\n" "$name:"
+    return
+  fi
+
+  local branch=$(git -C "$dir" branch --show-current 2>/dev/null || echo "?")
+  local status=""
+  local dirty=""
+  local ahead=""
+  local behind=""
+
+  # Verificar dirty
+  if ! git -C "$dir" diff --quiet 2>/dev/null; then
+    dirty="📝"
+  fi
+  if ! git -C "$dir" diff --staged --quiet 2>/dev/null; then
+    dirty="${dirty}📦"
+  fi
+
+  # Verificar ahead/behind
+  local tracking=$(git -C "$dir" rev-parse --abbrev-ref --symbolic-full-name "@{u}" 2>/dev/null)
+  if [[ -n "$tracking" ]]; then
+    local counts=$(git -C "$dir" rev-list --left-right --count "$tracking...HEAD" 2>/dev/null)
+    behind=$(echo "$counts" | cut -f1)
+    ahead=$(echo "$counts" | cut -f2)
+
+    [[ "$ahead" -gt 0 ]] && status="↑$ahead"
+    [[ "$behind" -gt 0 ]] && status="${status}↓$behind"
+  fi
+
+  # Formatar saída
+  if [[ -n "$dirty" || -n "$status" ]]; then
+    printf "   %-15s %-20s %s %s\n" "$name:" "$branch" "${dirty:-·}" "${status:-·}"
+  else
+    printf "   %-15s %-20s ✓\n" "$name:" "$branch"
+  fi
+}
+
+# Comando: status (padrão)
+cmd_status() {
+  echo "📊 Branch Status"
+  echo ""
+
+  # Coordenador
+  local coord=$(detect_coordinator)
+  if [[ -n "$coord" ]]; then
+    echo "🎯 Coordinator:"
+    format_status "$coord" "$(basename "$coord")"
+  fi
+
+  echo ""
+  echo "👷 Workers:"
+
+  # Workers
+  local workers=($(get_workers | sort -u))
+  if [[ ${#workers[@]} -eq 0 ]]; then
+    echo "   (nenhum worker)"
+    return
+  fi
+
+  for worker in "${workers[@]}"; do
+    local worker_dir=""
+
+    # Tentar encontrar diretório
+    if [[ -d "$CWT_ROOT/$worker" ]]; then
+      worker_dir="$CWT_ROOT/$worker"
+    elif [[ -d "$CWT_ROOT/workspace-$worker" ]]; then
+      worker_dir="$CWT_ROOT/workspace-$worker"
+    else
+      # Buscar nos worktrees
+      local coord=$(detect_coordinator)
+      if [[ -n "$coord" ]]; then
+        worker_dir=$(git -C "$coord" worktree list --porcelain 2>/dev/null | grep "^worktree " | cut -d' ' -f2- | while read -r wt; do
+          if [[ "$(basename "$wt")" == "$worker" || "$(basename "$wt")" == "workspace-$worker" ]]; then
+            echo "$wt"
+            break
+          fi
+        done)
+      fi
+    fi
+
+    format_status "$worker_dir" "$worker"
+  done
+
+  echo ""
+  echo "Legenda: 📝=modificado 📦=staged ↑=ahead ↓=behind ✓=sincronizado"
+}
+
+# Comando: sync - fetch e mostrar divergência
+cmd_sync() {
+  echo "🔄 Sincronizando branches..."
+  echo ""
+
+  # Coordenador
+  local coord=$(detect_coordinator)
+  if [[ -n "$coord" ]]; then
+    echo "🎯 Coordinator: $(basename "$coord")"
+    git -C "$coord" fetch --quiet 2>/dev/null && echo "   ✓ fetch" || echo "   ⚠ fetch falhou"
+  fi
+
+  # Workers
+  local workers=($(get_workers | sort -u))
+  for worker in "${workers[@]}"; do
+    local worker_dir=""
+
+    if [[ -d "$CWT_ROOT/$worker" ]]; then
+      worker_dir="$CWT_ROOT/$worker"
+    elif [[ -d "$CWT_ROOT/workspace-$worker" ]]; then
+      worker_dir="$CWT_ROOT/workspace-$worker"
+    fi
+
+    if [[ -d "$worker_dir" ]]; then
+      echo "👷 $worker:"
+      git -C "$worker_dir" fetch --quiet 2>/dev/null && echo "   ✓ fetch" || echo "   ⚠ fetch falhou"
+    fi
+  done
+
+  echo ""
+  cmd_status
+}
+
+# Comando: check - saída compacta para hooks/startup
+cmd_check() {
+  local issues=()
+
+  # Verificar coordenador
+  local coord=$(detect_coordinator)
+  if [[ -n "$coord" ]]; then
+    if ! git -C "$coord" diff --quiet 2>/dev/null; then
+      issues+=("coordinator:dirty")
+    fi
+    local tracking=$(git -C "$coord" rev-parse --abbrev-ref --symbolic-full-name "@{u}" 2>/dev/null)
+    if [[ -n "$tracking" ]]; then
+      local counts=$(git -C "$coord" rev-list --left-right --count "$tracking...HEAD" 2>/dev/null)
+      local behind=$(echo "$counts" | cut -f1)
+      [[ "$behind" -gt 0 ]] && issues+=("coordinator:behind($behind)")
+    fi
+  fi
+
+  # Verificar workers
+  local workers=($(get_workers | sort -u))
+  for worker in "${workers[@]}"; do
+    local worker_dir=""
+    if [[ -d "$CWT_ROOT/$worker" ]]; then
+      worker_dir="$CWT_ROOT/$worker"
+    elif [[ -d "$CWT_ROOT/workspace-$worker" ]]; then
+      worker_dir="$CWT_ROOT/workspace-$worker"
+    fi
+
+    if [[ -d "$worker_dir" ]]; then
+      if ! git -C "$worker_dir" diff --quiet 2>/dev/null; then
+        issues+=("$worker:dirty")
+      fi
+      local tracking=$(git -C "$worker_dir" rev-parse --abbrev-ref --symbolic-full-name "@{u}" 2>/dev/null)
+      if [[ -n "$tracking" ]]; then
+        local counts=$(git -C "$worker_dir" rev-list --left-right --count "$tracking...HEAD" 2>/dev/null)
+        local behind=$(echo "$counts" | cut -f1)
+        [[ "$behind" -gt 0 ]] && issues+=("$worker:behind($behind)")
+      fi
+    fi
+  done
+
+  if [[ ${#issues[@]} -gt 0 ]]; then
+    echo "⚠️  Branch issues: ${issues[*]}"
+    return 1
+  else
+    echo "✓ Branches sincronizadas"
+    return 0
+  fi
+}
+
+# Help
+show_help() {
+  cat << 'EOF'
+WT-BRANCH - Branch synchronization for CWT
+
+Usage: wt-branch [COMMAND]
+
+Commands:
+  status    Show branch status of all workers (default)
+  sync      Fetch and show divergence
+  check     Quick check for startup/hooks (compact output)
+
+Status symbols:
+  📝  Uncommitted changes
+  📦  Staged changes
+  ↑N  N commits ahead of remote
+  ↓N  N commits behind remote
+  ✓   Clean and synchronized
+
+Examples:
+  wt-branch              Show status
+  wt-branch sync         Fetch all and show status
+  wt-branch check        Quick check (returns exit code)
+EOF
+}
+
+# Main
+case "${1:-status}" in
+  status)
+    cmd_status
+    ;;
+  sync)
+    cmd_sync
+    ;;
+  check)
+    cmd_check
+    ;;
+  -h|--help|help)
+    show_help
+    ;;
+  *)
+    echo "Comando desconhecido: $1"
+    show_help
+    exit 1
+    ;;
+esac

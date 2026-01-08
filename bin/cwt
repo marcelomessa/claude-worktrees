@@ -69,7 +69,8 @@ Comandos:
 Opções:
   -h, --help       Mostra esta ajuda
   -v, --version    Mostra versão instalada
-  -c, --continue   Resume sessões Claude anteriores
+  -c, --continue   Resume última sessão Claude de cada worktree
+  -r, --resume     Abre picker para escolher sessão Claude
   -b, --base       Branch base do coordenador (para merges)
   -l, --list       Lista sessões ativas
   -a, --list-all   Lista TODAS as sessões CWT (todos projetos)
@@ -465,6 +466,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     -c|--continue)
       CONTINUE_FLAG="--continue"
+      shift
+      ;;
+    -r|--resume)
+      CONTINUE_FLAG="--resume"
       shift
       ;;
     -b|--base)
