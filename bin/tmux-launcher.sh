@@ -605,7 +605,21 @@ tmux send-keys -t "$SESSION_NAME:0" "echo '🎯 COORDINATOR - $COORD_DIR_NAME ($
 sleep 0.2
 # Determinar flags do Claude
 CLAUDE_FLAGS="${SKIP_PERMISSIONS:+--dangerously-skip-permissions}"
-if [[ -n "$CONTINUE_FLAG" ]]; then
+
+# Session management com UUIDs
+if [[ -n "$CWT_SESSION_NAME" ]]; then
+  # Carregar sessão existente se --resume
+  if [[ "$CONTINUE_FLAG" == "--resume" ]]; then
+    if ! load_cwt_session; then
+      echo "   ⚠️  Sessão não encontrada, criando nova..."
+    fi
+  fi
+
+  # Obter session ID para coordinator
+  COORD_SESSION_ID=$(get_session_id "coordinator")
+  CLAUDE_FLAGS="$CLAUDE_FLAGS --session-id $COORD_SESSION_ID"
+  echo "   🔑 Session ID (coordinator): ${COORD_SESSION_ID:0:8}..."
+elif [[ -n "$CONTINUE_FLAG" ]]; then
   CLAUDE_FLAGS="$CLAUDE_FLAGS --continue"
 fi
 
@@ -661,7 +675,18 @@ for workspace in "${WORKSPACES[@]}"; do
   sleep 0.2
   tmux send-keys -t "$SESSION_NAME:$WINDOW_NUM" "cd '$WORKSPACE_DIR'" Enter
   sleep 0.2
-  tmux send-keys -t "$SESSION_NAME:$WINDOW_NUM" "claude ${SKIP_PERMISSIONS:+--dangerously-skip-permissions} $CONTINUE_FLAG" Enter
+
+  # Determinar flags do worker
+  WORKER_FLAGS="${SKIP_PERMISSIONS:+--dangerously-skip-permissions}"
+  if [[ -n "$CWT_SESSION_NAME" ]]; then
+    WORKER_SESSION_ID=$(get_session_id "$workspace")
+    WORKER_FLAGS="$WORKER_FLAGS --session-id $WORKER_SESSION_ID"
+    echo "   🔑 Session ID ($workspace): ${WORKER_SESSION_ID:0:8}..."
+  elif [[ -n "$CONTINUE_FLAG" ]]; then
+    WORKER_FLAGS="$WORKER_FLAGS $CONTINUE_FLAG"
+  fi
+
+  tmux send-keys -t "$SESSION_NAME:$WINDOW_NUM" "claude $WORKER_FLAGS" Enter
 
   # Guardar info para enviar prompt depois
   WORKER_WINDOWS+=("$WINDOW_NUM:$workspace")
@@ -749,6 +774,11 @@ for worker_info in "${WORKER_WINDOWS[@]}"; do
     fi
   fi
 done
+
+# Salvar sessão CWT se usando sessões nomeadas
+if [[ -n "$CWT_SESSION_NAME" ]]; then
+  save_cwt_session
+fi
 
 # Window final: Monitor
 echo "   $WINDOW_NUM: monitor"

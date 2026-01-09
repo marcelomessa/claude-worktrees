@@ -78,6 +78,8 @@ Opções:
   -s, --status     Mostra status dos workers
   --solo           Modo solo: só coordinator, sem workers
   --strict         Modo strict: coordinator não pode editar código
+  --session NAME   Nome da sessão CWT (para resume coordenado)
+  --sessions       Lista sessões CWT salvas
 
 Estrutura de Projeto:
   ~/projects/meu-projeto/
@@ -436,6 +438,22 @@ while [[ $# -gt 0 ]]; do
       tmux list-sessions 2>/dev/null | grep "^cwt" || echo "Nenhuma sessão CWT ativa"
       exit 0
       ;;
+    --sessions)
+      sessions_dir="$CWT_ROOT/.cwt/sessions"
+      if [[ -d "$sessions_dir" ]]; then
+        echo "═══ Sessões salvas ═══"
+        for f in "$sessions_dir"/*.json; do
+          [[ -f "$f" ]] || continue
+          name=$(basename "$f" .json)
+          created=$(jq -r '.created // "?"' "$f" 2>/dev/null | cut -dT -f1)
+          workers=$(jq -r '.sessions | keys | join(", ")' "$f" 2>/dev/null)
+          echo "  $name ($created): $workers"
+        done
+      else
+        echo "Nenhuma sessão salva"
+      fi
+      exit 0
+      ;;
     -k|--kill)
       if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
         tmux kill-session -t "$SESSION_NAME"
@@ -484,6 +502,10 @@ while [[ $# -gt 0 ]]; do
       STRICT_MODE="true"
       shift
       ;;
+    --session)
+      CWT_SESSION_NAME="$2"
+      shift 2
+      ;;
     -*)
       echo "Opção desconhecida: $1"
       echo "Use 'cwt --help' para ver opções"
@@ -513,5 +535,6 @@ export CONTINUE_FLAG
 export SOLO_MODE
 export STRICT_MODE
 export SESSION_NAME
+export CWT_SESSION_NAME
 export CWT_PROJECT_ROOT=$(find_cwt_root)
 exec "$CWT_DIR/tmux-launcher.sh" "${WORKERS[@]}"
