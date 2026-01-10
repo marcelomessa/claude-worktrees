@@ -88,7 +88,7 @@ if [[ "$WORKER_ID" != "coordinator" && -n "$WORKER_ID" ]]; then
   echo "$COMMAND" | grep -qE "git\s+merge" && block "git merge - apenas coordinator"
   echo "$COMMAND" | grep -qE "git\s+rebase" && block "git rebase - apenas coordinator"
   echo "$COMMAND" | grep -qE "git\s+checkout\s+(main|master|dev|develop)\b" && block "checkout branch protegida - apenas coordinator"
-  echo "$COMMAND" | grep -qE "git\s+reset\s+--hard" && block "git reset --hard - perigoso"
+  # git reset --hard agora bloqueado na seção UNIVERSAL para todos
 
   # Azion CLI
   echo "$COMMAND" | grep -qE "azion\s+(deploy|delete|create|update|link|unlink)" && block "azion CLI - apenas coordinator"
@@ -107,14 +107,44 @@ echo "$COMMAND" | grep -qE "mkfs\." && block "mkfs proibido"
 echo "$COMMAND" | grep -qE "dd\s+if=.*of=/dev" && block "dd to device"
 echo "$COMMAND" | grep -qE "git\s+add\s+(-A|--all|\s\.(\s|$))" && block "git add -A/. - use arquivos específicos"
 
-# Git destructive - discard changes without commit
-# These commands cause IRREVERSIBLE data loss. Block and guide to safer alternatives.
-echo "$COMMAND" | grep -qE "git\s+checkout\s+--\s" && block "PERDA DE DADOS: git checkout -- descarta mudanças permanentemente. Use 'git stash' para salvar, ou 'git commit' para preservar. Se realmente precisa descartar, AGUARDE o usuário autorizar."
-echo "$COMMAND" | grep -qE "git\s+checkout\s+\.\s*$" && block "PERDA DE DADOS: git checkout . descarta TODAS as mudanças. Use 'git stash' ou 'git commit' primeiro. AGUARDE o usuário se precisar descartar."
+# =============================================================================
+# GIT DESTRUCTIVE COMMANDS - PERDA IRREVERSÍVEL DE DADOS
+# =============================================================================
+# Estes comandos podem causar perda permanente de código não commitado.
+# TODOS são bloqueados - usuário deve autorizar explicitamente.
+
+# Pattern: git checkout -- <file>
+echo "$COMMAND" | grep -qE "git\s+checkout\s+--\s" && block "PERDA DE DADOS: git checkout -- descarta mudanças permanentemente. Use 'git stash' para salvar, ou 'git commit' para preservar. AGUARDE o usuário autorizar."
+
+# Pattern: git checkout .
+echo "$COMMAND" | grep -qE "git\s+checkout\s+\.\s*$" && block "PERDA DE DADOS: git checkout . descarta TODAS as mudanças. Use 'git stash' ou 'git commit' primeiro. AGUARDE o usuário autorizar."
+
+# Pattern: git checkout <hash> -- <file> (recupera versão antiga, PERDE atual!)
+echo "$COMMAND" | grep -qE "git\s+checkout\s+[a-f0-9]+\s+--" && block "PERDA DE DADOS: git checkout <commit> -- <file> sobrescreve arquivo atual com versão antiga. Mudanças não commitadas serão PERDIDAS. Use 'git stash' primeiro, ou 'git show <commit>:<file>' para apenas visualizar. AGUARDE o usuário autorizar."
+
+# Pattern: git checkout HEAD~N (volta commits, pode perder trabalho)
+echo "$COMMAND" | grep -qE "git\s+checkout\s+HEAD~" && block "PERDA DE DADOS: git checkout HEAD~ pode descartar mudanças. Use 'git stash' primeiro. AGUARDE o usuário autorizar."
+
+# Pattern: git checkout <branch> -- <file> (sobrescreve com versão de outra branch)
+echo "$COMMAND" | grep -qE "git\s+checkout\s+\w+\s+--\s" && block "PERDA DE DADOS: git checkout <branch> -- <file> sobrescreve arquivo com versão de outra branch. Use 'git diff <branch> -- <file>' para comparar primeiro. AGUARDE o usuário autorizar."
+
+# git restore (várias formas)
 echo "$COMMAND" | grep -qE "git\s+restore\s+--staged" && block "CUIDADO: git restore --staged remove do stage. Use 'git diff --staged' para revisar antes. AGUARDE o usuário confirmar."
-echo "$COMMAND" | grep -qE "git\s+restore\s+[^-]" && block "PERDA DE DADOS: git restore descarta mudanças permanentemente. Use 'git stash' para salvar, ou 'git diff' para revisar. AGUARDE o usuário autorizar."
+echo "$COMMAND" | grep -qE "git\s+restore\s+--source" && block "PERDA DE DADOS: git restore --source sobrescreve com versão antiga. AGUARDE o usuário autorizar."
+echo "$COMMAND" | grep -qE "git\s+restore\s+[^-]" && block "PERDA DE DADOS: git restore descarta mudanças permanentemente. Use 'git stash' para salvar. AGUARDE o usuário autorizar."
+
+# git clean
 echo "$COMMAND" | grep -qE "git\s+clean\s+-[fd]" && block "PERDA DE DADOS: git clean remove arquivos não rastreados permanentemente. Liste com 'git clean -n' primeiro. AGUARDE o usuário autorizar."
-echo "$COMMAND" | grep -qE "git\s+stash\s+drop" && block "PERDA DE DADOS: git stash drop remove stash permanentemente. Use 'git stash list' e 'git stash show' para revisar. AGUARDE o usuário autorizar."
+
+# git stash drop/clear
+echo "$COMMAND" | grep -qE "git\s+stash\s+(drop|clear)" && block "PERDA DE DADOS: git stash drop/clear remove stash permanentemente. Use 'git stash list' para revisar. AGUARDE o usuário autorizar."
+
+# git reset (não só --hard)
+echo "$COMMAND" | grep -qE "git\s+reset\s+--hard" && block "PERDA DE DADOS: git reset --hard descarta TODAS as mudanças. Use 'git stash' primeiro. AGUARDE o usuário autorizar."
+echo "$COMMAND" | grep -qE "git\s+reset\s+HEAD~" && block "CUIDADO: git reset HEAD~ desfaz commits. Mudanças ficam unstaged mas podem ser perdidas. AGUARDE o usuário autorizar."
+
+# git revert --no-commit (pode causar conflitos destrutivos)
+echo "$COMMAND" | grep -qE "git\s+revert\s+--no-commit" && block "CUIDADO: git revert --no-commit modifica arquivos sem commit. Verifique mudanças pendentes primeiro. AGUARDE o usuário autorizar."
 
 # =============================================================================
 # APPLY DENY FROM settings.json (enforce even in skip-permissions mode)
