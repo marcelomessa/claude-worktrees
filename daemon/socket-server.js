@@ -6,11 +6,12 @@ const net = require('net');
 const fs = require('fs');
 
 class SocketServer {
-  constructor(socketPath, stateManager, pubsub, voting) {
+  constructor(socketPath, stateManager, pubsub, voting, knowledgeManager = null) {
     this.socketPath = socketPath;
     this.stateManager = stateManager;
     this.pubsub = pubsub;
     this.voting = voting;
+    this.knowledgeManager = knowledgeManager;
     this.server = null;
     this.clients = new Map(); // socket -> clientInfo
   }
@@ -247,6 +248,128 @@ class SocketServer {
 
         case 'ping':
           result = 'pong';
+          break;
+
+        // === Knowledge Base ===
+        case 'kb_query':
+          if (this.knowledgeManager) {
+            result = this.knowledgeManager.query(params);
+          } else {
+            error = 'KnowledgeManager not initialized';
+          }
+          break;
+
+        case 'kb_list':
+          if (this.knowledgeManager) {
+            result = this.knowledgeManager.list(params?.category);
+          } else {
+            error = 'KnowledgeManager not initialized';
+          }
+          break;
+
+        case 'kb_get':
+          if (this.knowledgeManager) {
+            result = this.knowledgeManager.get(params.id);
+          } else {
+            error = 'KnowledgeManager not initialized';
+          }
+          break;
+
+        case 'kb_add':
+          if (!this.knowledgeManager) {
+            error = 'KnowledgeManager not initialized';
+          } else if (clientInfo.workerId !== 'coordinator') {
+            error = 'kb_add: apenas coordinator pode adicionar';
+          } else {
+            result = this.knowledgeManager.add(params);
+            if (result.success) {
+              this.pubsub.publish('kb.added', result.entry, clientInfo.workerId);
+            }
+          }
+          break;
+
+        case 'kb_update':
+          if (!this.knowledgeManager) {
+            error = 'KnowledgeManager not initialized';
+          } else if (clientInfo.workerId !== 'coordinator') {
+            error = 'kb_update: apenas coordinator pode atualizar';
+          } else {
+            result = this.knowledgeManager.update(params.id, params.updates);
+            if (result.success) {
+              this.pubsub.publish('kb.updated', result.entry, clientInfo.workerId);
+            }
+          }
+          break;
+
+        case 'kb_delete':
+          if (!this.knowledgeManager) {
+            error = 'KnowledgeManager not initialized';
+          } else if (clientInfo.workerId !== 'coordinator') {
+            error = 'kb_delete: apenas coordinator pode remover';
+          } else {
+            result = this.knowledgeManager.delete(params.id);
+            if (result.success) {
+              this.pubsub.publish('kb.deleted', { id: params.id }, clientInfo.workerId);
+            }
+          }
+          break;
+
+        case 'kb_learn':
+          if (!this.knowledgeManager) {
+            error = 'KnowledgeManager not initialized';
+          } else if (clientInfo.workerId !== 'coordinator') {
+            error = 'kb_learn: apenas coordinator pode salvar padrões';
+          } else {
+            result = this.knowledgeManager.learn(params);
+            if (result.success) {
+              this.pubsub.publish('kb.learned', result.entry, clientInfo.workerId);
+            }
+          }
+          break;
+
+        // === Discoveries ===
+        case 'discovery_add':
+          if (this.knowledgeManager) {
+            result = this.knowledgeManager.addDiscovery({
+              ...params,
+              workerId: clientInfo.workerId
+            });
+            if (result.success) {
+              this.pubsub.publish('discovery.added', result.discovery, clientInfo.workerId);
+            }
+          } else {
+            error = 'KnowledgeManager not initialized';
+          }
+          break;
+
+        case 'discovery_list':
+          if (this.knowledgeManager) {
+            result = this.knowledgeManager.listDiscoveries(params?.since);
+          } else {
+            error = 'KnowledgeManager not initialized';
+          }
+          break;
+
+        // === Safety Rules ===
+        case 'safety_check':
+          if (this.knowledgeManager) {
+            result = this.knowledgeManager.checkSafety(params.command);
+          } else {
+            result = { allowed: true, rules: [] };
+          }
+          break;
+
+        case 'safety_add':
+          if (!this.knowledgeManager) {
+            error = 'KnowledgeManager not initialized';
+          } else if (clientInfo.workerId !== 'coordinator') {
+            error = 'safety_add: apenas coordinator pode adicionar regras';
+          } else {
+            result = this.knowledgeManager.addSafetyRule(params);
+            if (result.success) {
+              this.pubsub.publish('safety.rule_added', result.rule, clientInfo.workerId);
+            }
+          }
           break;
 
         default:

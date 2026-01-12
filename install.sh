@@ -71,6 +71,22 @@ ln -sf "$INSTALL_DIR/hooks/wt-check.sh" "$BIN_DIR/wt-check"
 ln -sf "$INSTALL_DIR/lib/wt-override" "$BIN_DIR/wt-override"
 ln -sf "$INSTALL_DIR/lib/wt-billing" "$BIN_DIR/wt-billing"
 ln -sf "$INSTALL_DIR/lib/wt-branch" "$BIN_DIR/wt-branch"
+ln -sf "$INSTALL_DIR/lib/wt-kb" "$BIN_DIR/wt-kb"
+
+# Sincronizar Knowledge Base templates
+echo "📚 Sincronizando Knowledge Base..."
+GLOBAL_KB="$HOME/.cwt/knowledge"
+TEMPLATES_KB="$INSTALL_DIR/templates/knowledge"
+
+if [[ -d "$TEMPLATES_KB" ]]; then
+  mkdir -p "$GLOBAL_KB"
+  for category in patterns guidelines; do
+    [[ -d "$TEMPLATES_KB/$category" ]] && cp -rn "$TEMPLATES_KB/$category" "$GLOBAL_KB/" 2>/dev/null || \
+      mkdir -p "$GLOBAL_KB/$category" && cp -n "$TEMPLATES_KB/$category"/*.md "$GLOBAL_KB/$category/" 2>/dev/null
+  done
+  [[ -f "$TEMPLATES_KB/index.json" ]] && cp -n "$TEMPLATES_KB/index.json" "$GLOBAL_KB/" 2>/dev/null
+  echo "   Global KB: $GLOBAL_KB"
+fi
 
 # Check PATH
 if [[ ":$PATH:" != *":$BIN_DIR:"* ]]; then
@@ -125,6 +141,12 @@ echo "Branch sync:"
 echo "  wt-branch               # Status das branches"
 echo "  wt-branch sync          # Fetch e status"
 echo "  wt-branch check         # Check rápido (para hooks)"
+echo ""
+echo "Knowledge Base:"
+echo "  wt-kb query \"text\"      # Buscar padrões/guidelines"
+echo "  wt-kb list              # Listar entradas"
+echo "  wt-kb discover \"...\"    # Compartilhar descoberta"
+echo "  wt-kb safety check X    # Verificar se comando é seguro"
 echo ""
 echo "Reinicie o terminal ou execute:"
 echo "  source $SHELL_RC"

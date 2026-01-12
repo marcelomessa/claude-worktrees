@@ -1,0 +1,30 @@
+{
+  "version": "1.0.0",
+  "description": "CWT Knowledge Base seed templates",
+  "categories": {
+    "patterns": {
+      "description": "Reusable code patterns and best practices",
+      "entries": [
+        "error-handling",
+        "multi-agent-communication"
+      ]
+    },
+    "guidelines": {
+      "description": "Development guidelines and workflows",
+      "entries": [
+        "git-workflow",
+        "code-review"
+      ]
+    }
+  },
+  "aliases": {
+    "error": "error-handling",
+    "try-catch": "error-handling",
+    "git": "git-workflow",
+    "commit": "git-workflow",
+    "review": "code-review",
+    "pr": "code-review",
+    "communication": "multi-agent-communication",
+    "messaging": "multi-agent-communication"
+  }
+}

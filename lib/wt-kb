@@ -1,0 +1,436 @@
+#!/bin/bash
+# =============================================================================
+# WT-KB - Knowledge Base CLI for multi-agent coordination
+# =============================================================================
+# Usage:
+#   wt-kb query "error handling"     Search knowledge base
+#   wt-kb list [--category X]        List entries
+#   wt-kb get <id>                   Get specific entry
+#   wt-kb add --type pattern --title "X" --file Y.md  (coordinator only)
+#   wt-kb learn --question "..." --answer "..." --title "..." (coordinator only)
+#   wt-kb discover "title" "content" Share discovery
+#   wt-kb discoveries [--since 1h]  List discoveries
+#   wt-kb safety list                List safety rules
+#   wt-kb safety check "command"     Check if command is safe
+#   wt-kb safety add --pattern "..." --action block (coordinator only)
+# =============================================================================
+
+WORKER_ID="${CLAUDE_WORKER_ID:-$(basename "$PWD")}"
+
+# Detectar .cwt/ subindo a árvore de diretórios
+find_cwt_root() {
+  if [[ -n "$CWT_PROJECT_ROOT" && -d "$CWT_PROJECT_ROOT/.cwt" ]]; then
+    echo "$CWT_PROJECT_ROOT"
+    return 0
+  fi
+
+  local dir="$PWD"
+  while [[ "$dir" != "/" ]]; do
+    if [[ -d "$dir/.cwt" ]]; then
+      echo "$dir"
+      return 0
+    fi
+    dir=$(dirname "$dir")
+  done
+
+  return 1
+}
+
+CWT_ROOT=$(find_cwt_root)
+
+# Encontrar socket do daemon
+find_socket() {
+  if [[ -n "$CWT_SOCKET" && -S "$CWT_SOCKET" ]]; then
+    echo "$CWT_SOCKET"
+    return 0
+  fi
+
+  if [[ -n "$CWT_ROOT" && -S "$CWT_ROOT/.cwt/cwt.sock" ]]; then
+    echo "$CWT_ROOT/.cwt/cwt.sock"
+    return 0
+  fi
+
+  return 1
+}
+
+SOCKET=$(find_socket)
+
+daemon_available() {
+  [[ -n "$SOCKET" && -S "$SOCKET" ]] && return 0
+  return 1
+}
+
+# Registrar e enviar request
+send_as_worker() {
+  local request="$1"
+  (
+    echo "{\"method\":\"register\",\"params\":{\"id\":\"$WORKER_ID\"},\"id\":0}"
+    sleep 0.1
+    echo "$request"
+  ) | nc -w 2 -U "$SOCKET" 2>/dev/null | tail -1
+}
+
+# Formatar resposta JSON
+format_response() {
+  python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    if 'error' in data and data['error']:
+        print(f\"Error: {data['error']}\")
+        sys.exit(1)
+    result = data.get('result')
+    if result is None:
+        print('No results')
+    elif isinstance(result, list):
+        for item in result:
+            if isinstance(item, dict):
+                print(f\"  [{item.get('category', '?')}] {item.get('title', item.get('id', '?'))}\")
+                if item.get('content'):
+                    content = item['content'][:100] + '...' if len(item.get('content','')) > 100 else item.get('content','')
+                    print(f\"    {content}\")
+            else:
+                print(f\"  {item}\")
+    elif isinstance(result, dict):
+        if result.get('entries'):
+            for entry in result['entries']:
+                print(f\"  [{entry.get('category', '?')}] {entry.get('title', entry.get('id', '?'))}\")
+        elif result.get('success'):
+            print('Success')
+            if result.get('entry'):
+                print(f\"  ID: {result['entry'].get('id')}\")
+        else:
+            print(json.dumps(result, indent=2))
+    else:
+        print(result)
+except Exception as e:
+    print(f'Parse error: {e}')
+    sys.exit(1)
+" 2>/dev/null
+}
+
+# Formatar conteúdo de entrada única
+format_entry() {
+  python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    if 'error' in data and data['error']:
+        print(f\"Error: {data['error']}\")
+        sys.exit(1)
+    result = data.get('result')
+    if not result:
+        print('Not found')
+        sys.exit(1)
+    print(f\"# {result.get('title', 'Untitled')}\")
+    print(f\"Category: {result.get('category', '?')} | Type: {result.get('type', '?')}\")
+    if result.get('keywords'):
+        print(f\"Keywords: {', '.join(result['keywords'])}\")
+    print()
+    print(result.get('content', ''))
+except Exception as e:
+    print(f'Error: {e}')
+" 2>/dev/null
+}
+
+# Verificar daemon
+require_daemon() {
+  if ! daemon_available; then
+    echo "Error: CWT daemon not running"
+    echo "Start with: cwt start"
+    exit 1
+  fi
+}
+
+# =============================================================================
+# COMMANDS
+# =============================================================================
+
+case "${1:-help}" in
+  query)
+    shift
+    QUERY="$*"
+    [[ -z "$QUERY" ]] && echo "Usage: wt-kb query \"search terms\"" && exit 1
+
+    require_daemon
+
+    # Construir params JSON
+    PARAMS=$(python3 -c "import json; print(json.dumps({'query': '$QUERY'}))")
+    RESPONSE=$(send_as_worker "{\"method\":\"kb_query\",\"params\":$PARAMS,\"id\":1}")
+    echo "Search: $QUERY"
+    echo "---"
+    echo "$RESPONSE" | format_response
+    ;;
+
+  list)
+    shift
+    CATEGORY=""
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --category|-c) CATEGORY="$2"; shift 2 ;;
+        *) shift ;;
+      esac
+    done
+
+    require_daemon
+
+    if [[ -n "$CATEGORY" ]]; then
+      RESPONSE=$(send_as_worker "{\"method\":\"kb_list\",\"params\":{\"category\":\"$CATEGORY\"},\"id\":1}")
+      echo "Category: $CATEGORY"
+    else
+      RESPONSE=$(send_as_worker "{\"method\":\"kb_list\",\"params\":{},\"id\":1}")
+      echo "All entries:"
+    fi
+    echo "---"
+    echo "$RESPONSE" | format_response
+    ;;
+
+  get)
+    ID="$2"
+    [[ -z "$ID" ]] && echo "Usage: wt-kb get <id>" && exit 1
+
+    require_daemon
+
+    RESPONSE=$(send_as_worker "{\"method\":\"kb_get\",\"params\":{\"id\":\"$ID\"},\"id\":1}")
+    echo "$RESPONSE" | format_entry
+    ;;
+
+  add)
+    shift
+    TYPE=""
+    TITLE=""
+    FILE=""
+    CONTENT=""
+    CATEGORY=""
+
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --type|-t) TYPE="$2"; shift 2 ;;
+        --title) TITLE="$2"; shift 2 ;;
+        --file|-f) FILE="$2"; shift 2 ;;
+        --content) CONTENT="$2"; shift 2 ;;
+        --category|-c) CATEGORY="$2"; shift 2 ;;
+        *) shift ;;
+      esac
+    done
+
+    [[ -z "$TYPE" ]] && echo "Error: --type required (pattern, guideline, architecture)" && exit 1
+    [[ -z "$TITLE" ]] && echo "Error: --title required" && exit 1
+
+    if [[ -n "$FILE" && -f "$FILE" ]]; then
+      CONTENT=$(cat "$FILE")
+    fi
+    [[ -z "$CONTENT" ]] && echo "Error: --file or --content required" && exit 1
+
+    require_daemon
+
+    PARAMS=$(python3 -c "
+import json
+params = {
+    'type': '$TYPE',
+    'title': '''$TITLE''',
+    'content': '''$CONTENT'''
+}
+if '$CATEGORY':
+    params['category'] = '$CATEGORY'
+print(json.dumps(params))
+")
+
+    RESPONSE=$(send_as_worker "{\"method\":\"kb_add\",\"params\":$PARAMS,\"id\":1}")
+    echo "$RESPONSE" | format_response
+    ;;
+
+  learn)
+    shift
+    QUESTION=""
+    ANSWER=""
+    TITLE=""
+
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --question|-q) QUESTION="$2"; shift 2 ;;
+        --answer|-a) ANSWER="$2"; shift 2 ;;
+        --title|-t) TITLE="$2"; shift 2 ;;
+        *) shift ;;
+      esac
+    done
+
+    [[ -z "$QUESTION" ]] && echo "Error: --question required" && exit 1
+    [[ -z "$ANSWER" ]] && echo "Error: --answer required" && exit 1
+    [[ -z "$TITLE" ]] && TITLE="$QUESTION"
+
+    require_daemon
+
+    PARAMS=$(python3 -c "
+import json
+print(json.dumps({
+    'question': '''$QUESTION''',
+    'answer': '''$ANSWER''',
+    'title': '''$TITLE'''
+}))
+")
+
+    RESPONSE=$(send_as_worker "{\"method\":\"kb_learn\",\"params\":$PARAMS,\"id\":1}")
+    echo "Learning saved:"
+    echo "$RESPONSE" | format_response
+    ;;
+
+  discover)
+    TITLE="$2"
+    CONTENT="$3"
+    [[ -z "$TITLE" || -z "$CONTENT" ]] && echo "Usage: wt-kb discover \"title\" \"content\"" && exit 1
+
+    require_daemon
+
+    PARAMS=$(python3 -c "
+import json
+print(json.dumps({
+    'title': '''$TITLE''',
+    'content': '''$CONTENT'''
+}))
+")
+
+    RESPONSE=$(send_as_worker "{\"method\":\"discovery_add\",\"params\":$PARAMS,\"id\":1}")
+    echo "Discovery shared:"
+    echo "$RESPONSE" | format_response
+    ;;
+
+  discoveries)
+    shift
+    SINCE=""
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --since|-s) SINCE="$2"; shift 2 ;;
+        *) shift ;;
+      esac
+    done
+
+    require_daemon
+
+    if [[ -n "$SINCE" ]]; then
+      RESPONSE=$(send_as_worker "{\"method\":\"discovery_list\",\"params\":{\"since\":\"$SINCE\"},\"id\":1}")
+    else
+      RESPONSE=$(send_as_worker "{\"method\":\"discovery_list\",\"params\":{},\"id\":1}")
+    fi
+    echo "Recent discoveries:"
+    echo "---"
+    echo "$RESPONSE" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    discoveries = data.get('result', [])
+    if not discoveries:
+        print('  No discoveries yet')
+    else:
+        for d in discoveries:
+            print(f\"  [{d.get('workerId', '?')}] {d.get('title', '?')}\")
+            print(f\"    {d.get('content', '')[:80]}...\")
+except Exception as e:
+    print(f'Error: {e}')
+" 2>/dev/null
+    ;;
+
+  safety)
+    SUBCMD="$2"
+    case "$SUBCMD" in
+      list)
+        require_daemon
+        RESPONSE=$(send_as_worker "{\"method\":\"kb_list\",\"params\":{\"category\":\"safety\"},\"id\":1}")
+        echo "Safety rules:"
+        echo "$RESPONSE" | format_response
+        ;;
+
+      check)
+        COMMAND="$3"
+        [[ -z "$COMMAND" ]] && echo "Usage: wt-kb safety check \"command\"" && exit 1
+
+        require_daemon
+
+        PARAMS=$(python3 -c "import json; print(json.dumps({'command': '''$COMMAND'''}))")
+        RESPONSE=$(send_as_worker "{\"method\":\"safety_check\",\"params\":$PARAMS,\"id\":1}")
+        echo "$RESPONSE" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    result = data.get('result', {})
+    if result.get('allowed', True):
+        print('✓ Command allowed')
+    else:
+        print('✗ Command BLOCKED')
+        for rule in result.get('matchedRules', []):
+            print(f\"  Rule: {rule.get('id', '?')} - {rule.get('message', rule.get('pattern', '?'))}\")
+except Exception as e:
+    print(f'Error: {e}')
+" 2>/dev/null
+        ;;
+
+      add)
+        shift 2
+        PATTERN=""
+        ACTION="block"
+        MESSAGE=""
+
+        while [[ $# -gt 0 ]]; do
+          case "$1" in
+            --pattern|-p) PATTERN="$2"; shift 2 ;;
+            --action|-a) ACTION="$2"; shift 2 ;;
+            --message|-m) MESSAGE="$2"; shift 2 ;;
+            *) shift ;;
+          esac
+        done
+
+        [[ -z "$PATTERN" ]] && echo "Error: --pattern required" && exit 1
+
+        require_daemon
+
+        PARAMS=$(python3 -c "
+import json
+params = {'pattern': '''$PATTERN''', 'action': '$ACTION'}
+if '''$MESSAGE''':
+    params['message'] = '''$MESSAGE'''
+print(json.dumps(params))
+")
+
+        RESPONSE=$(send_as_worker "{\"method\":\"safety_add\",\"params\":$PARAMS,\"id\":1}")
+        echo "Safety rule added:"
+        echo "$RESPONSE" | format_response
+        ;;
+
+      *)
+        echo "Usage: wt-kb safety <list|check|add>"
+        echo "  list              List safety rules"
+        echo "  check \"command\"   Check if command is safe"
+        echo "  add --pattern ... Add new rule (coordinator only)"
+        ;;
+    esac
+    ;;
+
+  help|--help|-h|*)
+    echo "wt-kb - Knowledge Base for multi-agent coordination"
+    echo ""
+    echo "Query & Browse:"
+    echo "  query \"text\"              Search knowledge base"
+    echo "  list [--category X]       List entries"
+    echo "  get <id>                  Get specific entry"
+    echo ""
+    echo "Manage (coordinator only):"
+    echo "  add --type X --title Y --file Z.md   Add entry"
+    echo "  learn --question Q --answer A        Save Q&A as pattern"
+    echo ""
+    echo "Discoveries:"
+    echo "  discover \"title\" \"content\"     Share a discovery"
+    echo "  discoveries [--since 1h]        List recent discoveries"
+    echo ""
+    echo "Safety:"
+    echo "  safety list                 List safety rules"
+    echo "  safety check \"command\"      Check if allowed"
+    echo "  safety add --pattern X      Add rule (coordinator only)"
+    echo ""
+    echo "Worker: $WORKER_ID"
+    if daemon_available; then
+      echo "Daemon: online"
+    else
+      echo "Daemon: offline"
+    fi
+    ;;
+esac

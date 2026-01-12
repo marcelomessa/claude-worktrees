@@ -20,6 +20,7 @@ const StateManager = require('./state-manager');
 const PubSub = require('./pubsub');
 const Voting = require('./voting');
 const SocketServer = require('./socket-server');
+const KnowledgeManager = require('./knowledge-manager');
 
 // Determinar project root
 const PROJECT_ROOT = process.argv[2] || process.cwd();
@@ -62,7 +63,8 @@ fs.writeFileSync(path.join(CWT_DIR, 'daemon.pid'), String(process.pid));
 const stateManager = new StateManager(STATE_FILE, projectName);
 const pubsub = new PubSub();
 const voting = new Voting(pubsub, stateManager);
-const socketServer = new SocketServer(SOCKET_PATH, stateManager, pubsub, voting);
+const knowledgeManager = new KnowledgeManager(PROJECT_ROOT);
+const socketServer = new SocketServer(SOCKET_PATH, stateManager, pubsub, voting, knowledgeManager);
 
 // Iniciar servidor
 socketServer.start();

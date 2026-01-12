@@ -235,6 +235,49 @@ cwt_update() {
     echo "ℹ️  Nenhum worker encontrado"
   fi
 
+  # Sincronizar Knowledge Base templates para global
+  echo ""
+  echo "📚 Sincronizando Knowledge Base..."
+
+  local global_kb="$HOME/.cwt/knowledge"
+  local templates_kb="$install_dir/templates/knowledge"
+
+  if [[ -d "$templates_kb" ]]; then
+    mkdir -p "$global_kb"
+
+    # Copiar templates que não existem ou são mais novos
+    for category in patterns guidelines; do
+      local src_dir="$templates_kb/$category"
+      local dst_dir="$global_kb/$category"
+
+      if [[ -d "$src_dir" ]]; then
+        mkdir -p "$dst_dir"
+
+        for file in "$src_dir"/*.md; do
+          [[ -f "$file" ]] || continue
+          local basename=$(basename "$file")
+          local dst_file="$dst_dir/$basename"
+
+          # Copiar se não existe ou template é mais novo
+          if [[ ! -f "$dst_file" ]] || [[ "$file" -nt "$dst_file" ]]; then
+            cp "$file" "$dst_file"
+            echo "   ✅ $category/$basename"
+          fi
+        done
+      fi
+    done
+
+    # Copiar index.json se não existe
+    if [[ -f "$templates_kb/index.json" && ! -f "$global_kb/index.json" ]]; then
+      cp "$templates_kb/index.json" "$global_kb/index.json"
+      echo "   ✅ index.json"
+    fi
+
+    echo "   Global KB: $global_kb"
+  else
+    echo "   ℹ️  Templates não encontrados em $templates_kb"
+  fi
+
   echo ""
   echo "═══════════════════════════════════════"
   echo " ✅ Projeto atualizado"
