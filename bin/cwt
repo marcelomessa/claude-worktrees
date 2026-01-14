@@ -111,6 +111,106 @@ Atalhos tmux:
 EOF
 }
 
+# Comando budget - gerenciar budget do projeto
+cwt_budget() {
+  local cwt_root=$(find_cwt_root)
+
+  if [[ -z "$cwt_root" ]]; then
+    echo "❌ Nenhum projeto CWT encontrado"
+    exit 1
+  fi
+
+  local config_file="$cwt_root/.cwt/config.json"
+  local limit=""
+  local period=""
+  local threshold=""
+  local disable=false
+  local show_status=true
+
+  # Parse args
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --limit|-l)
+        limit="$2"
+        show_status=false
+        shift 2
+        ;;
+      --period|-p)
+        period="$2"
+        show_status=false
+        shift 2
+        ;;
+      --threshold|-t)
+        threshold="$2"
+        show_status=false
+        shift 2
+        ;;
+      --disable)
+        disable=true
+        show_status=false
+        shift
+        ;;
+      *)
+        shift
+        ;;
+    esac
+  done
+
+  # Ensure config exists
+  if [[ ! -f "$config_file" ]]; then
+    echo '{"name": "'$(basename "$cwt_root")'"}' > "$config_file"
+  fi
+
+  # Disable budget
+  if [[ "$disable" == "true" ]]; then
+    jq 'del(.budget)' "$config_file" > "$config_file.tmp" && mv "$config_file.tmp" "$config_file"
+    echo "✅ Budget desabilitado"
+    exit 0
+  fi
+
+  # Set values
+  if [[ -n "$limit" ]]; then
+    jq ".budget.limit = $limit" "$config_file" > "$config_file.tmp" && mv "$config_file.tmp" "$config_file"
+    echo "✅ Budget limit: \$$limit"
+  fi
+
+  if [[ -n "$period" ]]; then
+    jq ".budget.period = \"$period\"" "$config_file" > "$config_file.tmp" && mv "$config_file.tmp" "$config_file"
+    echo "✅ Budget period: $period"
+  fi
+
+  if [[ -n "$threshold" ]]; then
+    jq ".budget.warning_threshold = $threshold" "$config_file" > "$config_file.tmp" && mv "$config_file.tmp" "$config_file"
+    echo "✅ Warning threshold: $threshold"
+  fi
+
+  # Show status
+  if [[ "$show_status" == "true" ]] || [[ -n "$limit" ]] || [[ -n "$period" ]]; then
+    echo ""
+    echo "═══ Budget Status ═══"
+    local budget_enabled=$(jq -r '.budget.limit // empty' "$config_file")
+    if [[ -z "$budget_enabled" ]]; then
+      echo "Status: disabled"
+      echo ""
+      echo "Para habilitar:"
+      echo "  cwt budget --limit 10 --period daily"
+    else
+      echo "Limit:     \$$(jq -r '.budget.limit // 0' "$config_file")"
+      echo "Period:    $(jq -r '.budget.period // "daily"' "$config_file")"
+      echo "Threshold: $(jq -r '.budget.warning_threshold // 0.8' "$config_file")"
+
+      # Show current spend if billing cache exists
+      local billing_cache="$cwt_root/.cwt/billing-cache.json"
+      if [[ -f "$billing_cache" ]]; then
+        local current=$(jq -r '.cost // 0' "$billing_cache")
+        local limit_val=$(jq -r '.budget.limit' "$config_file")
+        echo "Current:   \$$current"
+        echo "Remaining: \$$(echo "$limit_val - $current" | bc 2>/dev/null || echo "?")"
+      fi
+    fi
+  fi
+}
+
 # Comando update - atualiza projeto existente com nova versão
 cwt_update() {
   local cwt_root=$(find_cwt_root)
@@ -479,6 +579,11 @@ case "${1:-}" in
   update)
     shift
     cwt_update "$@"
+    exit 0
+    ;;
+  budget)
+    shift
+    cwt_budget "$@"
     exit 0
     ;;
 esac
