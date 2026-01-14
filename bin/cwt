@@ -168,6 +168,17 @@ cwt_update() {
     ln -sf "$install_dir/hooks/wt-check.sh" "$claude_dir/wt-check.sh"
     ln -sf "$install_dir/hooks/wt-sync.sh" "$claude_dir/wt-sync.sh"
     echo "   ✅ hooks symlinks atualizados"
+
+    # Skills CWT
+    if [[ -d "$install_dir/templates/skills" ]]; then
+      mkdir -p "$claude_dir/skills"
+      for skill in cwt-coordinator cwt-kb cwt-budget; do
+        if [[ -d "$install_dir/templates/skills/$skill" ]]; then
+          cp -r "$install_dir/templates/skills/$skill" "$claude_dir/skills/"
+        fi
+      done
+      echo "   ✅ skills atualizadas (coordinator, kb, budget)"
+    fi
   fi
 
   # Atualizar workers
@@ -229,6 +240,17 @@ cwt_update() {
     ln -sf "$install_dir/hooks/wt-check.sh" "$claude_dir/wt-check.sh"
     ln -sf "$install_dir/hooks/wt-sync.sh" "$claude_dir/wt-sync.sh"
     echo "   ✅ hooks symlinks atualizados"
+
+    # Skills CWT
+    if [[ -d "$install_dir/templates/skills" ]]; then
+      mkdir -p "$claude_dir/skills"
+      for skill in cwt-worker cwt-kb cwt-budget; do
+        if [[ -d "$install_dir/templates/skills/$skill" ]]; then
+          cp -r "$install_dir/templates/skills/$skill" "$claude_dir/skills/"
+        fi
+      done
+      echo "   ✅ skills atualizadas (worker, kb, budget)"
+    fi
   done
 
   if [[ ${#workers_found[@]} -eq 0 ]]; then
