@@ -1,4 +1,14 @@
 {
+  "mcpServers": {
+    "cwt": {
+      "command": "node",
+      "args": ["~/.claude-worktrees/daemon/mcp-server.js"],
+      "env": {
+        "CWT_PROJECT_ROOT": "CWT_ROOT_PLACEHOLDER",
+        "CLAUDE_WORKER_ID": "coordinator"
+      }
+    }
+  },
   "permissions": {
     "allow": [
       "Read",

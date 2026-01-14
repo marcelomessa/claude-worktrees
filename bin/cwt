@@ -158,10 +158,10 @@ cwt_update() {
       echo "   ✅ CLAUDE.md atualizado"
     fi
 
-    # settings.json
+    # settings.json (com MCP server configurado)
     if [[ -f "$install_dir/templates/settings.coord.json" ]]; then
-      cp "$install_dir/templates/settings.coord.json" "$claude_dir/settings.json"
-      echo "   ✅ settings.json atualizado"
+      sed "s|CWT_ROOT_PLACEHOLDER|$cwt_root|g" "$install_dir/templates/settings.coord.json" > "$claude_dir/settings.json"
+      echo "   ✅ settings.json atualizado (MCP: cwt)"
     fi
 
     # Symlinks para hooks
@@ -218,10 +218,11 @@ cwt_update() {
       echo "   ✅ CLAUDE.md atualizado (WORKER_ID: $worker_name)"
     fi
 
-    # settings.json com WORKER_ID correto
+    # settings.json com WORKER_ID e MCP server configurado
     if [[ -f "$install_dir/templates/settings.worker.json" ]]; then
-      sed "s/WORKER_NAME/$worker_name/g" "$install_dir/templates/settings.worker.json" > "$claude_dir/settings.json"
-      echo "   ✅ settings.json atualizado (WORKER_ID: $worker_name)"
+      sed -e "s/WORKER_NAME/$worker_name/g" -e "s|CWT_ROOT_PLACEHOLDER|$cwt_root|g" \
+        "$install_dir/templates/settings.worker.json" > "$claude_dir/settings.json"
+      echo "   ✅ settings.json atualizado (MCP: cwt, WORKER_ID: $worker_name)"
     fi
 
     # Symlinks para hooks
