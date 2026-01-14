@@ -79,12 +79,18 @@ GLOBAL_KB="$HOME/.cwt/knowledge"
 TEMPLATES_KB="$INSTALL_DIR/templates/knowledge"
 
 if [[ -d "$TEMPLATES_KB" ]]; then
-  mkdir -p "$GLOBAL_KB"
   for category in patterns guidelines; do
-    [[ -d "$TEMPLATES_KB/$category" ]] && cp -rn "$TEMPLATES_KB/$category" "$GLOBAL_KB/" 2>/dev/null || \
-      mkdir -p "$GLOBAL_KB/$category" && cp -n "$TEMPLATES_KB/$category"/*.md "$GLOBAL_KB/$category/" 2>/dev/null
+    if [[ -d "$TEMPLATES_KB/$category" ]]; then
+      mkdir -p "$GLOBAL_KB/$category"
+      for file in "$TEMPLATES_KB/$category"/*.md; do
+        [[ -f "$file" ]] || continue
+        dest="$GLOBAL_KB/$category/$(basename "$file")"
+        [[ -f "$dest" ]] || cp "$file" "$dest"
+      done
+    fi
   done
-  [[ -f "$TEMPLATES_KB/index.json" ]] && cp -n "$TEMPLATES_KB/index.json" "$GLOBAL_KB/" 2>/dev/null
+  [[ -f "$TEMPLATES_KB/index.json" && ! -f "$GLOBAL_KB/index.json" ]] && \
+    cp "$TEMPLATES_KB/index.json" "$GLOBAL_KB/"
   echo "   Global KB: $GLOBAL_KB"
 fi
 
