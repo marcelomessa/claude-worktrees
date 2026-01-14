@@ -133,13 +133,210 @@ except Exception as e:
 " 2>/dev/null
 }
 
-# Verificar daemon
+# Verificar daemon (para operações de escrita)
 require_daemon() {
   if ! daemon_available; then
-    echo "Error: CWT daemon not running"
-    echo "Start with: cwt start"
+    echo "Error: MCP daemon not running (required for writes)"
+    echo ""
+    echo "To start:"
+    echo "  cwt              # Inicia ambiente multi-agent completo"
+    echo "  cwt --daemon     # Apenas o daemon (background)"
+    echo ""
+    echo "Reads (query, list, get) work offline."
     exit 1
   fi
+}
+
+# =============================================================================
+# FALLBACK: File-based reads (quando daemon não disponível)
+# =============================================================================
+
+# Diretórios de KB
+PROJECT_KB="${CWT_ROOT:-.}/.cwt/knowledge"
+GLOBAL_KB="$HOME/.cwt/knowledge"
+
+# Listar arquivos de KB (projeto + global, projeto tem prioridade)
+list_kb_files() {
+  local category="${1:-}"
+  local seen=()
+
+  # Função para listar de um diretório
+  list_from_dir() {
+    local dir="$1"
+    local cat="$2"
+
+    if [[ -n "$cat" ]]; then
+      # Categoria específica
+      [[ -d "$dir/$cat" ]] && find "$dir/$cat" -name "*.md" -type f 2>/dev/null
+    else
+      # Todas categorias
+      for subdir in patterns guidelines architecture; do
+        [[ -d "$dir/$subdir" ]] && find "$dir/$subdir" -name "*.md" -type f 2>/dev/null
+      done
+    fi
+  }
+
+  # Projeto primeiro (prioridade)
+  list_from_dir "$PROJECT_KB" "$category"
+  # Depois global
+  list_from_dir "$GLOBAL_KB" "$category"
+}
+
+# Parsear frontmatter de arquivo markdown
+parse_md_file() {
+  local file="$1"
+  python3 -c "
+import sys, re
+
+content = open('$file', 'r').read()
+
+# Parse YAML frontmatter
+frontmatter = {}
+body = content
+
+if content.startswith('---'):
+    parts = content.split('---', 2)
+    if len(parts) >= 3:
+        fm_text = parts[1].strip()
+        body = parts[2].strip()
+        for line in fm_text.split('\n'):
+            if ':' in line:
+                key, val = line.split(':', 1)
+                key = key.strip()
+                val = val.strip()
+                # Handle arrays like [a, b, c]
+                if val.startswith('[') and val.endswith(']'):
+                    val = [x.strip().strip('\"').strip(\"'\") for x in val[1:-1].split(',')]
+                frontmatter[key] = val
+
+import json
+print(json.dumps({
+    'frontmatter': frontmatter,
+    'content': body,
+    'file': '$file'
+}))
+" 2>/dev/null
+}
+
+# Fallback: list entries from files
+fallback_list() {
+  local category="$1"
+  echo "All entries (offline mode):"
+  echo "---"
+
+  local seen_ids=()
+
+  while IFS= read -r file; do
+    [[ -z "$file" ]] && continue
+
+    local basename=$(basename "$file" .md)
+    local dirname=$(basename "$(dirname "$file")")
+    local id="$dirname-$basename"
+
+    # Skip duplicates (projeto já mostrado)
+    [[ " ${seen_ids[*]} " =~ " $id " ]] && continue
+    seen_ids+=("$id")
+
+    # Parse e mostrar
+    local data=$(parse_md_file "$file")
+    local title=$(echo "$data" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('frontmatter',{}).get('title','$basename'))" 2>/dev/null)
+
+    echo "  [$dirname] $title"
+  done < <(list_kb_files "$category")
+}
+
+# Fallback: query entries from files
+fallback_query() {
+  local query="$1"
+  echo "Search: $query (offline mode)"
+  echo "---"
+
+  local seen_ids=()
+  local query_lower=$(echo "$query" | tr '[:upper:]' '[:lower:]')
+
+  while IFS= read -r file; do
+    [[ -z "$file" ]] && continue
+
+    local basename=$(basename "$file" .md)
+    local dirname=$(basename "$(dirname "$file")")
+    local id="$dirname-$basename"
+
+    [[ " ${seen_ids[*]} " =~ " $id " ]] && continue
+
+    # Parse arquivo
+    local data=$(parse_md_file "$file")
+
+    # Verificar match em title, keywords, content
+    local match=$(echo "$data" | python3 -c "
+import sys, json
+query = '$query_lower'
+d = json.load(sys.stdin)
+fm = d.get('frontmatter', {})
+content = d.get('content', '').lower()
+title = str(fm.get('title', '')).lower()
+keywords = fm.get('keywords', [])
+if isinstance(keywords, str):
+    keywords = [keywords]
+keywords_str = ' '.join(str(k).lower() for k in keywords)
+
+if query in title or query in keywords_str or query in content:
+    print('match')
+" 2>/dev/null)
+
+    if [[ "$match" == "match" ]]; then
+      seen_ids+=("$id")
+      local title=$(echo "$data" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('frontmatter',{}).get('title','$basename'))" 2>/dev/null)
+      local snippet=$(echo "$data" | python3 -c "import sys,json; d=json.load(sys.stdin); c=d.get('content','')[:100]; print(c.replace('\n',' ')+'...' if len(c)>=100 else c.replace('\n',' '))" 2>/dev/null)
+      echo "  [$dirname] $title"
+      echo "    $snippet"
+    fi
+  done < <(list_kb_files)
+
+  [[ ${#seen_ids[@]} -eq 0 ]] && echo "  No results found"
+}
+
+# Fallback: get entry by id
+fallback_get() {
+  local id="$1"
+
+  # Tentar encontrar arquivo pelo id (category-name ou só name)
+  local found=""
+
+  while IFS= read -r file; do
+    [[ -z "$file" ]] && continue
+
+    local basename=$(basename "$file" .md)
+    local dirname=$(basename "$(dirname "$file")")
+    local file_id="$dirname-$basename"
+
+    if [[ "$file_id" == "$id" || "$basename" == "$id" ]]; then
+      found="$file"
+      break
+    fi
+  done < <(list_kb_files)
+
+  if [[ -z "$found" ]]; then
+    echo "Not found: $id"
+    return 1
+  fi
+
+  # Mostrar conteúdo
+  local data=$(parse_md_file "$found")
+  echo "$data" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+fm = d.get('frontmatter', {})
+print(f\"# {fm.get('title', 'Untitled')}\")
+print(f\"Category: {fm.get('category', '?')} | Type: {fm.get('type', '?')}\")
+kw = fm.get('keywords', [])
+if kw:
+    if isinstance(kw, list):
+        print(f\"Keywords: {', '.join(kw)}\")
+    else:
+        print(f\"Keywords: {kw}\")
+print()
+print(d.get('content', ''))
+" 2>/dev/null
 }
 
 # =============================================================================
@@ -152,14 +349,17 @@ case "${1:-help}" in
     QUERY="$*"
     [[ -z "$QUERY" ]] && echo "Usage: wt-kb query \"search terms\"" && exit 1
 
-    require_daemon
-
-    # Construir params JSON
-    PARAMS=$(python3 -c "import json; print(json.dumps({'query': '$QUERY'}))")
-    RESPONSE=$(send_as_worker "{\"method\":\"kb_query\",\"params\":$PARAMS,\"id\":1}")
-    echo "Search: $QUERY"
-    echo "---"
-    echo "$RESPONSE" | format_response
+    if daemon_available; then
+      # Usar daemon
+      PARAMS=$(python3 -c "import json; print(json.dumps({'query': '$QUERY'}))")
+      RESPONSE=$(send_as_worker "{\"method\":\"kb_query\",\"params\":$PARAMS,\"id\":1}")
+      echo "Search: $QUERY"
+      echo "---"
+      echo "$RESPONSE" | format_response
+    else
+      # Fallback: ler arquivos diretamente
+      fallback_query "$QUERY"
+    fi
     ;;
 
   list)
@@ -172,27 +372,35 @@ case "${1:-help}" in
       esac
     done
 
-    require_daemon
-
-    if [[ -n "$CATEGORY" ]]; then
-      RESPONSE=$(send_as_worker "{\"method\":\"kb_list\",\"params\":{\"category\":\"$CATEGORY\"},\"id\":1}")
-      echo "Category: $CATEGORY"
+    if daemon_available; then
+      # Usar daemon
+      if [[ -n "$CATEGORY" ]]; then
+        RESPONSE=$(send_as_worker "{\"method\":\"kb_list\",\"params\":{\"category\":\"$CATEGORY\"},\"id\":1}")
+        echo "Category: $CATEGORY"
+      else
+        RESPONSE=$(send_as_worker "{\"method\":\"kb_list\",\"params\":{},\"id\":1}")
+        echo "All entries:"
+      fi
+      echo "---"
+      echo "$RESPONSE" | format_response
     else
-      RESPONSE=$(send_as_worker "{\"method\":\"kb_list\",\"params\":{},\"id\":1}")
-      echo "All entries:"
+      # Fallback: ler arquivos diretamente
+      fallback_list "$CATEGORY"
     fi
-    echo "---"
-    echo "$RESPONSE" | format_response
     ;;
 
   get)
     ID="$2"
     [[ -z "$ID" ]] && echo "Usage: wt-kb get <id>" && exit 1
 
-    require_daemon
-
-    RESPONSE=$(send_as_worker "{\"method\":\"kb_get\",\"params\":{\"id\":\"$ID\"},\"id\":1}")
-    echo "$RESPONSE" | format_entry
+    if daemon_available; then
+      # Usar daemon
+      RESPONSE=$(send_as_worker "{\"method\":\"kb_get\",\"params\":{\"id\":\"$ID\"},\"id\":1}")
+      echo "$RESPONSE" | format_entry
+    else
+      # Fallback: ler arquivos diretamente
+      fallback_get "$ID"
+    fi
     ;;
 
   add)
@@ -428,9 +636,11 @@ print(json.dumps(params))
     echo ""
     echo "Worker: $WORKER_ID"
     if daemon_available; then
-      echo "Daemon: online"
+      echo "MCP Daemon: online"
     else
-      echo "Daemon: offline"
+      echo "MCP Daemon: offline"
+      echo "  Reads (query/list/get) work offline"
+      echo "  Writes need: cwt --daemon"
     fi
     ;;
 esac

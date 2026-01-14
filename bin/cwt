@@ -481,6 +481,28 @@ while [[ $# -gt 0 ]]; do
       tmux list-sessions 2>/dev/null | grep "^cwt" || echo "Nenhuma sessão CWT ativa"
       exit 0
       ;;
+    --daemon|-d)
+      # Iniciar apenas o MCP daemon (sem tmux/workers)
+      echo "═══ Starting MCP Daemon ═══"
+      if [[ -S "$CWT_ROOT/.cwt/cwt.sock" ]]; then
+        echo "Daemon already running: $CWT_ROOT/.cwt/cwt.sock"
+        exit 0
+      fi
+      echo "Project: $CWT_ROOT"
+      echo "Socket: $CWT_ROOT/.cwt/cwt.sock"
+      echo ""
+      node "$CWT_INSTALL_DIR/daemon/index.js" "$CWT_ROOT" &
+      DAEMON_PID=$!
+      sleep 1
+      if [[ -S "$CWT_ROOT/.cwt/cwt.sock" ]]; then
+        echo "MCP Daemon started (PID: $DAEMON_PID)"
+        echo "Stop with: pkill -f 'daemon/index.js $CWT_ROOT'"
+      else
+        echo "Failed to start daemon"
+        exit 1
+      fi
+      exit 0
+      ;;
     --sessions)
       sessions_dir="$CWT_ROOT/.cwt/sessions"
       if [[ -d "$sessions_dir" ]]; then
