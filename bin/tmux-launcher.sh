@@ -78,14 +78,15 @@ save_cwt_session() {
   echo "  \"sessions\": {" >> "$session_file"
 
   local first=true
-  for worker_id in "${!CLAUDE_SESSION_IDS[@]}"; do
+  while IFS='=' read -r worker_id session_id; do
+    [[ -z "$worker_id" ]] && continue
     if [[ "$first" == "true" ]]; then
       first=false
     else
       echo "," >> "$session_file"
     fi
-    printf "    \"%s\": \"%s\"" "$worker_id" "${CLAUDE_SESSION_IDS[$worker_id]}" >> "$session_file"
-  done
+    printf "    \"%s\": \"%s\"" "$worker_id" "$session_id" >> "$session_file"
+  done < "$SESSION_IDS_FILE"
 
   echo "" >> "$session_file"
   echo "  }" >> "$session_file"
@@ -106,12 +107,12 @@ load_cwt_session() {
     return 1
   fi
 
-  # Carregar session IDs do JSON
+  # Carregar session IDs do JSON para arquivo temporário
   while IFS=': ' read -r key value; do
     key=$(echo "$key" | tr -d '"' | xargs)
     value=$(echo "$value" | tr -d '",\n' | xargs)
     [[ -n "$key" && -n "$value" && "$key" != "name" && "$key" != "created" && "$key" != "{" && "$key" != "}" && "$key" != "sessions" ]] && \
-      CLAUDE_SESSION_IDS["$key"]="$value"
+      set_session_id "$key" "$value"
   done < <(cat "$session_file")
 
   echo "📂 Sessão '$CWT_SESSION_NAME' carregada"
@@ -121,18 +122,39 @@ load_cwt_session() {
 # Obter ou gerar session ID para um worktree
 get_session_id() {
   local worker_id="$1"
+  local existing_id=$(get_session_id_value "$worker_id")
 
-  if [[ -n "${CLAUDE_SESSION_IDS[$worker_id]:-}" ]]; then
-    echo "${CLAUDE_SESSION_IDS[$worker_id]}"
+  if [[ -n "$existing_id" ]]; then
+    echo "$existing_id"
   else
     local new_id=$(generate_uuid)
-    CLAUDE_SESSION_IDS["$worker_id"]="$new_id"
+    set_session_id "$worker_id" "$new_id"
     echo "$new_id"
   fi
 }
 
-# Array associativo para guardar session IDs
-declare -A CLAUDE_SESSION_IDS
+# Arquivo temporário para session IDs (compatível com bash 3)
+SESSION_IDS_FILE="/tmp/cwt-session-ids-$$.txt"
+touch "$SESSION_IDS_FILE"
+
+# Funções para manipular session IDs sem arrays associativos
+set_session_id() {
+  local key="$1"
+  local value="$2"
+  # Remove entrada existente e adiciona nova
+  grep -v "^$key=" "$SESSION_IDS_FILE" > "$SESSION_IDS_FILE.tmp" 2>/dev/null || true
+  mv "$SESSION_IDS_FILE.tmp" "$SESSION_IDS_FILE"
+  echo "$key=$value" >> "$SESSION_IDS_FILE"
+}
+
+get_session_id_value() {
+  local key="$1"
+  grep "^$key=" "$SESSION_IDS_FILE" 2>/dev/null | cut -d= -f2 | head -1
+}
+
+list_session_ids() {
+  cat "$SESSION_IDS_FILE" 2>/dev/null
+}
 
 # Usar sessão do ambiente ou padrão
 SESSION_NAME="${SESSION_NAME:-cwt}"
