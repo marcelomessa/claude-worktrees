@@ -281,6 +281,18 @@ cwt_update() {
       done
       echo "   ✅ skills atualizadas (coordinator, kb, budget)"
     fi
+
+    # Garantir .claude/ no .gitignore (não commitar settings.json com paths locais)
+    local gitignore="$cwt_root/$coordinator/.gitignore"
+    if [[ -f "$gitignore" ]]; then
+      if ! grep -q "^\.claude/$" "$gitignore" 2>/dev/null; then
+        echo ".claude/" >> "$gitignore"
+        echo "   ✅ .claude/ adicionado ao .gitignore"
+      fi
+    else
+      echo ".claude/" > "$gitignore"
+      echo "   ✅ .gitignore criado com .claude/"
+    fi
   fi
 
   # Atualizar workers
@@ -354,6 +366,19 @@ cwt_update() {
         fi
       done
       echo "   ✅ skills atualizadas (worker, kb, budget)"
+    fi
+
+    # Garantir .claude/ no .gitignore
+    local gitignore="$worker_path/.gitignore"
+    if [[ -f "$gitignore" ]]; then
+      if ! grep -q "^\.claude/$" "$gitignore" 2>/dev/null; then
+        echo ".claude/" >> "$gitignore"
+        echo "   ✅ .claude/ adicionado ao .gitignore"
+      fi
+    elif [[ -d "$worker_path/.git" ]] || [[ -f "$worker_path/.git" ]]; then
+      # Só criar .gitignore se é um repo/worktree git
+      echo ".claude/" > "$gitignore"
+      echo "   ✅ .gitignore criado com .claude/"
     fi
   done
 
