@@ -31,7 +31,7 @@ CWT_VERSION=$(cat "$CWT_INSTALL_DIR/VERSION" 2>/dev/null || echo "unknown")
 # Detectar .cwt/ subindo a árvore de diretórios
 find_cwt_root() {
   local dir="$PWD"
-  while [[ "$dir" != "/" ]]; do
+  while [[ "$dir" != "/" && "$dir" != "$HOME" ]]; do
     if [[ -d "$dir/.cwt" ]]; then
       echo "$dir"
       return 0
