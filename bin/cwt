@@ -260,7 +260,9 @@ cwt_update() {
 
     # settings.json (com MCP server configurado)
     if [[ -f "$install_dir/templates/settings.coord.json" ]]; then
-      sed "s|CWT_ROOT_PLACEHOLDER|$cwt_root|g" "$install_dir/templates/settings.coord.json" > "$claude_dir/settings.json"
+      sed -e "s|CWT_ROOT_PLACEHOLDER|$cwt_root|g" \
+          -e "s|~/.claude-worktrees|$install_dir|g" \
+          "$install_dir/templates/settings.coord.json" > "$claude_dir/settings.json"
       echo "   ✅ settings.json atualizado (MCP: cwt)"
     fi
 
@@ -331,8 +333,10 @@ cwt_update() {
 
     # settings.json com WORKER_ID e MCP server configurado
     if [[ -f "$install_dir/templates/settings.worker.json" ]]; then
-      sed -e "s/WORKER_NAME/$worker_name/g" -e "s|CWT_ROOT_PLACEHOLDER|$cwt_root|g" \
-        "$install_dir/templates/settings.worker.json" > "$claude_dir/settings.json"
+      sed -e "s/WORKER_NAME/$worker_name/g" \
+          -e "s|CWT_ROOT_PLACEHOLDER|$cwt_root|g" \
+          -e "s|~/.claude-worktrees|$install_dir|g" \
+          "$install_dir/templates/settings.worker.json" > "$claude_dir/settings.json"
       echo "   ✅ settings.json atualizado (MCP: cwt, WORKER_ID: $worker_name)"
     fi
 

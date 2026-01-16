@@ -297,17 +297,21 @@ install_claude_md() {
   fi
 }
 
-# Instalar settings.json com permissões e hooks
+# Instalar settings.json com permissões e MCP config
 install_settings() {
   local target_dir="$1"
   local role="$2"  # "coordinator" ou "worker"
   local worker_id="$3"
+  local project_root="$4"
 
   local claude_dir="$target_dir/.claude"
   local settings_file="$claude_dir/settings.json"
 
   # Criar diretório .claude se não existir
   mkdir -p "$claude_dir"
+
+  # Se já existe, não sobrescrever
+  [[ -f "$settings_file" ]] && return 0
 
   # Escolher template
   local template=""
@@ -318,12 +322,48 @@ install_settings() {
   fi
 
   if [[ -f "$template" ]]; then
-    # Copiar e substituir WORKER_NAME
-    sed "s/WORKER_NAME/$worker_id/g" "$template" > "$settings_file"
-    echo "   ⚙️  settings.json instalado em $claude_dir"
+    # Substituir placeholders:
+    # - WORKER_NAME -> worker_id
+    # - CWT_ROOT_PLACEHOLDER -> project_root (path real)
+    # - ~ -> $HOME (expandir para path absoluto)
+    local install_dir="$HOME/.claude-worktrees"
+    sed -e "s/WORKER_NAME/$worker_id/g" \
+        -e "s|CWT_ROOT_PLACEHOLDER|$project_root|g" \
+        -e "s|~/.claude-worktrees|$install_dir|g" \
+        "$template" > "$settings_file"
+    echo "   ⚙️  settings.json instalado"
   else
     echo "   ⚠️  Template não encontrado: $template"
   fi
+}
+
+# Instalar skills
+install_skills() {
+  local target_dir="$1"
+  local role="$2"  # "coordinator" ou "worker"
+
+  local claude_dir="$target_dir/.claude"
+  local skills_dir="$claude_dir/skills"
+  local install_dir="$HOME/.claude-worktrees"
+
+  # Se não há skills no install, pular
+  [[ ! -d "$install_dir/templates/skills" ]] && return 0
+
+  mkdir -p "$skills_dir"
+
+  # Copiar skills relevantes
+  local skills_to_copy=("cwt-kb" "cwt-budget")
+  if [[ "$role" == "coordinator" ]]; then
+    skills_to_copy+=("cwt-coordinator")
+  else
+    skills_to_copy+=("cwt-worker")
+  fi
+
+  for skill in "${skills_to_copy[@]}"; do
+    if [[ -d "$install_dir/templates/skills/$skill" && ! -d "$skills_dir/$skill" ]]; then
+      cp -r "$install_dir/templates/skills/$skill" "$skills_dir/"
+    fi
+  done
 }
 
 # Gerar prompt inicial para o coordenador
@@ -612,8 +652,10 @@ echo "   0: coordinator ($COORD_DIR_NAME) - $CURRENT_BRANCH"
 # Window 0: Coordinator
 echo "🎯 Configurando coordinator..."
 
-# Instalar CLAUDE.md se não existir
+# Instalar CLAUDE.md, settings.json e skills
 install_claude_md "$COORD_DIR" "coordinator" "coordinator"
+install_settings "$COORD_DIR" "coordinator" "coordinator" "$PROJECT_ROOT"
+install_skills "$COORD_DIR" "coordinator"
 
 tmux send-keys -t "$SESSION_NAME:0" "export CLAUDE_WORKER_ID='coordinator'" Enter
 sleep 0.2
@@ -678,8 +720,10 @@ for workspace in "${WORKSPACES[@]}"; do
   wt_branch=$(git -C "$WORKSPACE_DIR" branch --show-current 2>/dev/null || echo '?')
   echo "   $WINDOW_NUM: $workspace - $wt_branch"
 
-  # Instalar CLAUDE.md se não existir
+  # Instalar CLAUDE.md, settings.json e skills
   install_claude_md "$WORKSPACE_DIR" "worker" "$workspace"
+  install_settings "$WORKSPACE_DIR" "worker" "$workspace" "$PROJECT_ROOT"
+  install_skills "$WORKSPACE_DIR" "worker"
 
   # Criar window
   tmux new-window -t "$SESSION_NAME" -n "$workspace"
