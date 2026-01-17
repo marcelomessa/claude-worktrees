@@ -94,22 +94,25 @@ if [[ ${#WORKERS[@]} -eq 0 ]]; then
   exit 1
 fi
 
-# Get repo info
-REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
-if [[ -z "$REPO_ROOT" ]]; then
-  echo "Error: Not in a git repository"
-  exit 1
-fi
-
-PARENT_DIR=$(dirname "$REPO_ROOT")
-CURRENT_BRANCH=$(git branch --show-current)
-
-# Detectar projeto CWT e ler config
+# Detectar projeto CWT primeiro (prioridade)
 CWT_ROOT=$(find_cwt_root)
 PROJECT_NAME=""
+REPO_ROOT=""
+
 if [[ -n "$CWT_ROOT" && -f "$CWT_ROOT/.cwt/config.json" ]]; then
+  # Modo projeto CWT: usar coordinator do config
   PROJECT_NAME=$(jq -r '.name // empty' "$CWT_ROOT/.cwt/config.json" 2>/dev/null)
+  COORDINATOR=$(jq -r '.coordinator // empty' "$CWT_ROOT/.cwt/config.json" 2>/dev/null)
   WORK_BRANCH=$(jq -r '.work_branch // empty' "$CWT_ROOT/.cwt/config.json" 2>/dev/null)
+
+  if [[ -n "$COORDINATOR" ]]; then
+    # Coordinator pode ser "." (projeto é o próprio repo) ou subdiretório
+    if [[ "$COORDINATOR" == "." ]]; then
+      REPO_ROOT="$CWT_ROOT"
+    else
+      REPO_ROOT="$CWT_ROOT/$COORDINATOR"
+    fi
+  fi
 
   # Usar work_branch como base se não especificado
   [[ -z "$BASE_BRANCH" && -n "$WORK_BRANCH" ]] && BASE_BRANCH="$WORK_BRANCH"
@@ -117,6 +120,20 @@ if [[ -n "$CWT_ROOT" && -f "$CWT_ROOT/.cwt/config.json" ]]; then
   # Usar cwt/<projeto> como prefix se não especificado
   [[ -z "$PREFIX" && -n "$PROJECT_NAME" ]] && PREFIX="cwt/$PROJECT_NAME"
 fi
+
+# Fallback: detectar repo git diretamente
+if [[ -z "$REPO_ROOT" ]]; then
+  REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
+fi
+
+if [[ -z "$REPO_ROOT" || ! -d "$REPO_ROOT/.git" ]]; then
+  echo "Error: Not in a git repository and no CWT project found"
+  echo "  Run 'cwt init --repo <dir>' first, or cd into a git repo"
+  exit 1
+fi
+
+PARENT_DIR=$(dirname "$REPO_ROOT")
+CURRENT_BRANCH=$(git -C "$REPO_ROOT" branch --show-current)
 
 # Defaults se não detectou projeto
 BASE_BRANCH="${BASE_BRANCH:-$CURRENT_BRANCH}"
@@ -156,12 +173,12 @@ for worker in "${WORKERS[@]}"; do
   fi
 
   # Check if branch exists
-  if git show-ref --verify --quiet "refs/heads/$BRANCH_NAME"; then
+  if git -C "$REPO_ROOT" show-ref --verify --quiet "refs/heads/$BRANCH_NAME"; then
     echo "  Branch exists, creating worktree..."
-    git worktree add "$WORKTREE_PATH" "$BRANCH_NAME"
+    git -C "$REPO_ROOT" worktree add "$WORKTREE_PATH" "$BRANCH_NAME"
   else
     echo "  Creating branch and worktree..."
-    git worktree add -b "$BRANCH_NAME" "$WORKTREE_PATH" "$BASE_BRANCH"
+    git -C "$REPO_ROOT" worktree add -b "$BRANCH_NAME" "$WORKTREE_PATH" "$BASE_BRANCH"
   fi
 
   # Setup .claude/
@@ -174,13 +191,14 @@ for worker in "${WORKERS[@]}"; do
     echo "  ✓ CLAUDE.md"
   fi
 
-  # settings.json com WORKER_ID correto
+  # settings.json com substituições corretas
   if [[ -f "$INSTALL_DIR/templates/settings.worker.json" ]]; then
-    sed "s/WORKER_NAME/$worker/g" "$INSTALL_DIR/templates/settings.worker.json" > "$CLAUDE_DIR/settings.json"
-    echo "  ✓ settings.json (WORKER_ID: $worker)"
-  elif [[ -f "$TEMPLATES_DIR/settings.worker.json" ]]; then
-    sed "s/WORKER_NAME/$worker/g" "$TEMPLATES_DIR/settings.worker.json" > "$CLAUDE_DIR/settings.json"
-    echo "  ✓ settings.json (WORKER_ID: $worker)"
+    # Substituir: WORKER_NAME, CWT_ROOT_PLACEHOLDER, ~/
+    sed -e "s/WORKER_NAME/$worker/g" \
+        -e "s|CWT_ROOT_PLACEHOLDER|${CWT_ROOT:-$PARENT_DIR}|g" \
+        -e "s|~/.claude-worktrees|$INSTALL_DIR|g" \
+        "$INSTALL_DIR/templates/settings.worker.json" > "$CLAUDE_DIR/settings.json"
+    echo "  ✓ settings.json"
   fi
 
   # Symlinks para hooks
@@ -188,6 +206,17 @@ for worker in "${WORKERS[@]}"; do
     ln -sf "$INSTALL_DIR/hooks/wt-check.sh" "$CLAUDE_DIR/wt-check.sh"
     ln -sf "$INSTALL_DIR/hooks/wt-sync.sh" "$CLAUDE_DIR/wt-sync.sh"
     echo "  ✓ hooks symlinks"
+  fi
+
+  # Skills
+  if [[ -d "$INSTALL_DIR/templates/skills" ]]; then
+    mkdir -p "$CLAUDE_DIR/skills"
+    for skill in cwt-worker cwt-kb cwt-budget; do
+      if [[ -d "$INSTALL_DIR/templates/skills/$skill" ]]; then
+        cp -r "$INSTALL_DIR/templates/skills/$skill" "$CLAUDE_DIR/skills/"
+      fi
+    done
+    echo "  ✓ skills"
   fi
 
   # Registrar no workers.txt do projeto
@@ -204,7 +233,7 @@ echo "════════════════════════�
 # Show worktree list
 echo ""
 echo "Current worktrees:"
-git worktree list
+git -C "$REPO_ROOT" worktree list
 
 echo ""
 echo "Start with: cwt ${WORKERS[*]}"
