@@ -243,6 +243,7 @@ fallback_list() {
 
     echo "  [$dirname] $title"
   done < <(list_kb_files "$category")
+  return 0
 }
 
 # Fallback: query entries from files
@@ -293,6 +294,7 @@ if query in title or query in keywords_str or query in content:
   done < <(list_kb_files)
 
   [[ ${#seen_ids[@]} -eq 0 ]] && echo "  No results found"
+  return 0
 }
 
 # Fallback: get entry by id
@@ -337,6 +339,7 @@ if kw:
 print()
 print(d.get('content', ''))
 " 2>/dev/null
+  return 0
 }
 
 # =============================================================================
