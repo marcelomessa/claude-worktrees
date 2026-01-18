@@ -163,7 +163,7 @@ Enter
 Sleep 500ms
 Type "# cwt --strict     - Claude native permissions"
 Enter
-Sleep 3s
+Sleep 5s
 
 # ============ INTERNAL COMMUNICATION ============
 Ctrl+L
@@ -181,7 +181,7 @@ Enter
 Sleep 500ms
 Type "# wt-msg broadcast [msg]      - Announce to all"
 Enter
-Sleep 3s
+Sleep 5s
 
 # ============ HELP & SETTINGS (simulated tmux view) ============
 Ctrl+L
@@ -189,6 +189,6 @@ Ctrl+L
 # Run demo help script that simulates tmux layout
 Type "/tmp/cwt-demo/demo-help.sh"
 Enter
-Sleep 7s
+Sleep 10s
 Type "q"
 Sleep 1s
