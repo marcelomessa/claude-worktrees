@@ -30,6 +30,12 @@ Type "cd /tmp && rm -rf cwt-demo && mkdir cwt-demo && cd cwt-demo"
 Enter
 Sleep 500ms
 
+Hide
+Type "cp ~/.claude-worktrees/demo/cwt-demo-help.sh /tmp/cwt-demo/demo-help.sh 2>/dev/null || true"
+Enter
+Sleep 200ms
+Show
+
 Type "git clone https://github.com/expressjs/express.git main --depth 1 -q"
 Enter
 Sleep 2s
@@ -177,32 +183,12 @@ Type "# wt-msg broadcast [msg]      - Announce to all"
 Enter
 Sleep 3s
 
-# ============ SUMMARY ============
+# ============ HELP & SETTINGS (simulated tmux view) ============
 Ctrl+L
-Type "# ═══════════════════════════════════════════════════════════"
+
+# Run demo help script that simulates tmux layout
+Type "/tmp/cwt-demo/demo-help.sh"
 Enter
-Type "# SUMMARY"
-Enter
-Type "# ═══════════════════════════════════════════════════════════"
-Enter
-Type "#  - Worktrees: isolated copies, linked branches"
-Enter
-Type "#  - Knowledge Base: shared patterns (wt-kb)"
-Enter
-Type "#  - Skills: workflow templates (.claude/skills/)"
-Enter
-Type "#  - MCP: native tools (kb_query, budget_status)"
-Enter
-Type "#  - Bash Validator: security for workers"
-Enter
-Type "#  - Budget: spending limits (cwt budget)"
-Enter
-Type "#  - Modes: default, --solo, --strict, -c"
-Enter
-Type "#"
-Enter
-Type "#  https://github.com/marcelomessa/claude-worktrees"
-Enter
-Type "# ═══════════════════════════════════════════════════════════"
-Enter
-Sleep 5s
+Sleep 7s
+Type "q"
+Sleep 1s

@@ -2,6 +2,8 @@
 
 Multi-agent Claude Code environment using git worktrees and tmux sessions.
 
+![CWT Demo](demo/cwt-config.gif)
+
 ## What are Git Worktrees?
 
 Git worktrees allow you to have **multiple working directories** from the same repository, each checked out to a different branch simultaneously.

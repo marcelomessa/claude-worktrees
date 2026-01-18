@@ -1,0 +1,163 @@
+#!/bin/bash
+# =============================================================================
+# CWT Help - Interactive settings and help menu
+# =============================================================================
+
+# Find CWT project root
+find_cwt_root() {
+  if [[ -n "$CWT_PROJECT_ROOT" && -d "$CWT_PROJECT_ROOT/.cwt" ]]; then
+    echo "$CWT_PROJECT_ROOT"
+    return 0
+  fi
+  local dir="$PWD"
+  while [[ "$dir" != "/" && "$dir" != "$HOME" ]]; do
+    if [[ -d "$dir/.cwt" ]]; then
+      echo "$dir"
+      return 0
+    fi
+    dir=$(dirname "$dir")
+  done
+  return 1
+}
+
+CWT_ROOT=$(find_cwt_root)
+CONFIG_FILE="${CWT_ROOT:-.}/.cwt/config.json"
+
+# Get current budget info
+get_budget_info() {
+  if [[ -f "$CONFIG_FILE" ]]; then
+    local limit=$(jq -r '.budget.limit // "not set"' "$CONFIG_FILE" 2>/dev/null)
+    local period=$(jq -r '.budget.period // "daily"' "$CONFIG_FILE" 2>/dev/null)
+    echo "$limit|$period"
+  else
+    echo "not set|daily"
+  fi
+}
+
+# Get current usage
+get_usage() {
+  if command -v npx &>/dev/null; then
+    local today=$(date +%Y%m%d)
+    local result=$(npx ccusage -s "$today" -j --offline 2>/dev/null)
+    if [[ -n "$result" ]]; then
+      echo "$result" | jq -r '.totals.totalCost // 0' 2>/dev/null | \
+        python3 -c "import sys; v=sys.stdin.read().strip(); print(f'{float(v):.2f}' if v else '0.00')" 2>/dev/null
+    else
+      echo "0.00"
+    fi
+  else
+    echo "N/A"
+  fi
+}
+
+show_header() {
+  clear
+  echo "╔═══════════════════════════════════════════════════════════════════╗"
+  echo "║                    CWT - Claude Worktrees                         ║"
+  echo "║                    Settings & Help                                ║"
+  echo "╚═══════════════════════════════════════════════════════════════════╝"
+  echo ""
+}
+
+show_budget_status() {
+  local info=$(get_budget_info)
+  local limit=$(echo "$info" | cut -d'|' -f1)
+  local period=$(echo "$info" | cut -d'|' -f2)
+  local usage=$(get_usage)
+
+  echo "  BUDGET STATUS"
+  echo "  ─────────────────────────────────────────────────────────────────"
+  echo "    Limit:   \$$limit ($period)"
+  echo "    Usage:   \$$usage"
+
+  if [[ "$limit" != "not set" && "$usage" != "N/A" ]]; then
+    local pct=$(python3 -c "print(f'{(float($usage)/float($limit))*100:.0f}' if float($limit) > 0 else '0')" 2>/dev/null)
+    local bar_len=30
+    local filled=$(python3 -c "print(int($bar_len * min(float($usage)/float($limit), 1)) if float($limit) > 0 else 0)" 2>/dev/null)
+    local empty=$((bar_len - filled))
+    local bar=$(printf "%${filled}s" | tr ' ' '█')$(printf "%${empty}s" | tr ' ' '░')
+    echo "    [$bar] ${pct}%"
+  fi
+  echo ""
+}
+
+show_shortcuts() {
+  echo "  TMUX NAVIGATION"
+  echo "  ─────────────────────────────────────────────────────────────────"
+  echo "    Ctrl+B 0-9        Switch to window N (0=coord, 1+=workers)"
+  echo "    Ctrl+B n/p        Next/Previous window"
+  echo "    Alt+Left/Right    Quick window navigation"
+  echo "    Ctrl+B d          Detach (session keeps running)"
+  echo "    Ctrl+B ?          Show this help"
+  echo ""
+  echo "  COPY & SCROLL (macOS)"
+  echo "  ─────────────────────────────────────────────────────────────────"
+  echo "    fn+Opt + Mouse    Select text, then Cmd+C to copy"
+  echo "    fn+Opt + Arrows   Scroll with keyboard"
+  echo "    fn+Opt + PgUp/Dn  Page scroll"
+  echo "    Mouse scroll      Also works (mouse mode enabled)"
+  echo ""
+  echo "  AGENT COMMANDS"
+  echo "  ─────────────────────────────────────────────────────────────────"
+  echo "    wt-task <worker> \"task\"    Send task to worker"
+  echo "    wt-msg send <to> \"msg\"     Send message"
+  echo "    wt-msg broadcast \"msg\"     Broadcast to all"
+  echo "    wt-kb query \"text\"         Search knowledge base"
+  echo ""
+}
+
+configure_budget() {
+  show_header
+  echo "  CONFIGURE BUDGET"
+  echo "  ─────────────────────────────────────────────────────────────────"
+  echo ""
+
+  read -p "    Enter budget limit (USD): " new_limit
+  if [[ -z "$new_limit" ]]; then
+    echo "    Cancelled."
+    sleep 1
+    return
+  fi
+
+  echo ""
+  echo "    Period options: daily, weekly, monthly"
+  read -p "    Enter period [daily]: " new_period
+  new_period="${new_period:-daily}"
+
+  if [[ -n "$CWT_ROOT" ]]; then
+    # Update config using cwt budget command
+    cwt budget --limit "$new_limit" --period "$new_period" 2>/dev/null
+    echo ""
+    echo "    ✓ Budget updated: \$$new_limit ($new_period)"
+  else
+    echo "    ✗ No CWT project found"
+  fi
+
+  sleep 2
+}
+
+# Main menu loop
+while true; do
+  show_header
+  show_budget_status
+  show_shortcuts
+
+  echo "  ─────────────────────────────────────────────────────────────────"
+  echo "    [b] Configure budget    [r] Refresh    [q] Close"
+  echo ""
+
+  read -n 1 -s choice
+
+  case "$choice" in
+    b|B)
+      configure_budget
+      ;;
+    r|R)
+      # Just refresh (loop continues)
+      ;;
+    q|Q|"")
+      clear
+      exit 0
+      ;;
+  esac
+done

@@ -52,6 +52,7 @@ cp -r "$SCRIPT_DIR/daemon" "$INSTALL_DIR/" 2>/dev/null || true
 cp -r "$SCRIPT_DIR/config" "$INSTALL_DIR/" 2>/dev/null || true
 cp -r "$SCRIPT_DIR/hooks" "$INSTALL_DIR/" 2>/dev/null || true
 cp -r "$SCRIPT_DIR/templates" "$INSTALL_DIR/" 2>/dev/null || true
+cp -r "$SCRIPT_DIR/demo" "$INSTALL_DIR/" 2>/dev/null || true
 cp "$SCRIPT_DIR/VERSION" "$INSTALL_DIR/" 2>/dev/null || echo "0.0.1" > "$INSTALL_DIR/VERSION"
 
 # Make executable
@@ -59,6 +60,7 @@ chmod +x "$INSTALL_DIR/bin/"*
 chmod +x "$INSTALL_DIR/lib/"*
 chmod +x "$INSTALL_DIR/hooks/"*.sh 2>/dev/null || true
 chmod +x "$INSTALL_DIR/daemon/"*.js 2>/dev/null || true
+chmod +x "$INSTALL_DIR/demo/"*.sh 2>/dev/null || true
 
 # Create symlinks
 echo "🔗 Criando symlinks..."
