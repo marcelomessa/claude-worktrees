@@ -1,98 +1,103 @@
 # Claude Worktrees (CWT)
 
-Multi-agent Claude Code environment using git worktrees and tmux sessions.
+Run multiple Claude Code agents in parallel, each with isolated workspace and branch.
 
 ![CWT Demo](demo/cwt-config.gif)
 
-## What are Git Worktrees?
+## Why CWT?
 
-Git worktrees allow you to have **multiple working directories** from the same repository, each checked out to a different branch simultaneously.
+- **Parallel Development**: Multiple Claude agents working simultaneously on different features
+- **No Conflicts**: Each agent has its own directory and git branch via worktrees
+- **Coordinated Work**: Agents communicate via messages, coordinator orchestrates merges
+- **Budget Control**: Set spending limits and monitor usage in real-time
+- **Safe by Default**: Hooks prevent workers from dangerous operations (push, merge, deploy)
 
-### Worktrees vs Branches
+## Features
 
-| Aspect | Branches | Worktrees |
-|--------|----------|-----------|
-| **Disk** | Single working directory | Multiple directories, one per branch |
-| **Switching** | `git checkout` changes files in place | Each worktree is independent |
-| **Parallel work** | Cannot edit two branches at once | Edit multiple branches simultaneously |
-| **Conflicts** | Stash/commit before switching | No conflicts between worktrees |
-| **Use case** | Sequential development | Parallel multi-agent development |
+| Feature | Description |
+|---------|-------------|
+| **Git Worktrees** | Each worker gets isolated directory + branch |
+| **Tmux Sessions** | All agents in one terminal, easy navigation |
+| **Inter-Agent Messaging** | `wt-msg`, `wt-task` for coordination |
+| **MCP Server** | Native Claude tools via Model Context Protocol |
+| **Knowledge Base** | Shared patterns and guidelines (`wt-kb`) |
+| **Budget Control** | Spending limits with usage tracking |
+| **Bash Validator** | Blocks dangerous commands for workers |
+| **Auto-Continue** | Pulser detects idle agents and prompts them |
+| **Context Compaction** | Detects and handles context window resets |
+
+## Quick Start
+
+```bash
+# 1. Install
+git clone https://github.com/marcelomessa/claude-worktrees.git
+cd claude-worktrees && ./install.sh
+
+# 2. Setup project
+mkdir ~/my-project && cd ~/my-project
+git clone https://github.com/your/repo.git main
+cwt init --repo main --name my-project
+
+# 3. Create workers
+wt-init frontend backend
+
+# 4. Start
+cwt
+```
+
+Press `Ctrl+B ?` inside tmux to see keyboard shortcuts and budget status.
+
+## How It Works
+
+### Git Worktrees
+
+Traditional git requires switching branches, losing your current state. Worktrees allow multiple checkouts simultaneously:
 
 ```
-Traditional (branches):
 my-project/
-├── .git/
-└── src/          ← checkout main OR feature, never both
-
-Worktrees:
-my-project/                    ← main branch (coordinator)
-├── .git/
-└── src/
-
-workspace-frontend/            ← feature/frontend branch
-├── .git → ../my-project/.git  (linked)
-└── src/
-
-workspace-backend/             ← feature/backend branch
-├── .git → ../my-project/.git  (linked)
-└── src/
+├── main/                      ← Coordinator (main branch)
+│   └── .git/
+├── workspace-frontend/        ← Worker (feature/frontend branch)
+│   └── .git → ../main/.git
+└── workspace-backend/         ← Worker (feature/backend branch)
+    └── .git → ../main/.git
 ```
 
-**Key benefit**: Each Claude instance works in its own directory with its own branch, no file conflicts, true parallel development.
+Each Claude instance works in its own directory with its own branch. No conflicts, true parallel development.
 
-## Architecture
+### Coordinator + Workers
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                      TMUX SESSION (cwt)                         │
+│                      TMUX SESSION                               │
 ├─────────────────────────────────────────────────────────────────┤
-│  Window 0: COORDINATOR                                          │
-│  ├── Branch: main/dev (integration)                             │
-│  ├── Role: Plan, merge, deploy, orchestrate                     │
-│  └── Uses: subagents (Explore, Plan) as threads                 │
+│  Window 0: COORDINATOR (main/)                                  │
+│  └── Plans, delegates tasks, merges branches, deploys           │
 ├─────────────────────────────────────────────────────────────────┤
-│  Window 1: WORKER frontend                                      │
-│  ├── Worktree: workspace-frontend/                              │
-│  ├── Branch: feature/frontend                                   │
-│  └── Role: Frontend development                                 │
+│  Window 1: WORKER frontend (workspace-frontend/)                │
+│  └── Implements frontend features on feature/frontend branch    │
 ├─────────────────────────────────────────────────────────────────┤
-│  Window 2: WORKER backend                                       │
-│  ├── Worktree: workspace-backend/                               │
-│  ├── Branch: feature/backend                                    │
-│  └── Role: Backend development                                  │
-├─────────────────────────────────────────────────────────────────┤
-│  Window 3: WORKER security                                      │
-│  ├── Worktree: workspace-security/                              │
-│  ├── Branch: feature/security                                   │
-│  └── Role: Security features                                    │
-├─────────────────────────────────────────────────────────────────┤
-│  Window N: MONITOR                                              │
-│  └── Status dashboard                                           │
+│  Window 2: WORKER backend (workspace-backend/)                  │
+│  └── Implements backend features on feature/backend branch      │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### Communication Flow
-
-```
-                    ┌─────────────┐
-                    │ COORDINATOR │
-                    │  (main/)    │
-                    └──────┬──────┘
-                           │
-           ┌───────────────┼───────────────┐
-           │               │               │
-           ▼               ▼               ▼
-    ┌──────────┐    ┌──────────┐    ┌──────────┐
-    │ frontend │    │ backend  │    │ security │
-    │ (core 1) │    │ (core 2) │    │ (core 3) │
-    └──────────┘    └──────────┘    └──────────┘
-
-Communication via shared state file:
-  Project mode:  .cwt/state.json (isolated per project)
-  Legacy mode:   /tmp/claude-wt-state.json (global)
-```
+**Communication flow:**
+1. Coordinator sends tasks: `wt-task frontend "Implement login form"`
+2. Worker completes and reports: `wt-msg send coordinator "Login done"`
+3. Coordinator merges branches and deploys
 
 ## Installation
+
+### Requirements
+
+- git 2.5+ (worktree support)
+- tmux
+- jq
+- Node.js (for daemon)
+- Claude Code CLI
+
+### Install
 
 ```bash
 git clone https://github.com/marcelomessa/claude-worktrees.git
@@ -100,514 +105,257 @@ cd claude-worktrees
 ./install.sh
 ```
 
-This installs to `~/.local/bin/`:
-- `cwt` - Main launcher
-- `wt-msg` - Inter-agent messaging
-- `wt-task` - Task assignment
-- `wt-init` - Worktree creation
-- `wt-override` - Session-specific command overrides
+Installs to `~/.claude-worktrees/` with symlinks in `~/bin/`.
 
-## Project-Based Setup (Recommended)
+## Usage
 
-The recommended way to use CWT is with a **project folder** that contains all repos/worktrees:
-
-```
-~/projects/my-project/        # Project folder (not a repo)
-├── .cwt/                     # CWT state (isolated)
-│   ├── config.json
-│   └── state.json
-├── main/                     # Coordinator (cloned repo)
-│   └── .git/
-├── feature-frontend/         # Worker (worktree)
-│   └── .git → ../main/.git
-├── feature-backend/          # Worker (worktree)
-│   └── .git → ../main/.git
-└── docs/                     # Worker (separate repo)
-    └── .git/
-```
-
-### Step 1: Create Project
+### Project Setup
 
 ```bash
-mkdir -p ~/projects/my-project
-cd ~/projects/my-project
-cwt init --name my-project
-```
-
-### Step 2: Clone Repo and Create Worktrees
-
-```bash
-# Clone main repo
+# Initialize new project
+mkdir ~/projects/my-app && cd ~/projects/my-app
 git clone git@github.com:user/repo.git main
-cd main
+cwt init --repo main --name my-app
 
-# Create worktrees INSIDE project folder
-git worktree add ../feature-frontend -b feature/frontend
-git worktree add ../feature-backend -b feature/backend
+# Create worker worktrees
+wt-init frontend backend api
 
-# Optional: add separate repo
-cd ..
-git clone git@github.com:user/docs.git docs
+# Start session
+cwt
 ```
 
-### Step 3: Start Session
+### Session Management
 
 ```bash
-cd ~/projects/my-project
-cwt    # Auto-detects repos and worktrees
-
-# Or specify workers:
-cwt feature-frontend feature-backend docs
+cwt                     # Start or attach to session
+cwt --solo              # Coordinator only (no workers)
+cwt -c                  # Continue previous Claude sessions
+cwt --strict            # Use Claude's native permissions
+cwt --list              # List current project session
+cwt --kill              # End session
 ```
 
-### Multi-Project Support
+### Tmux Navigation
 
-Each project has its own tmux session and isolated state:
+| Key | Action |
+|-----|--------|
+| `Ctrl+B 0-9` | Switch to window N |
+| `Ctrl+B n/p` | Next/Previous window |
+| `Ctrl+B d` | Detach (keeps running) |
+| `Ctrl+B ?` | Help & Settings popup |
+
+### Copy & Scroll (macOS)
+
+| Key | Action |
+|-----|--------|
+| `fn+Opt + Mouse` | Select text, then `Cmd+C` to copy |
+| `fn+Opt + Arrows` | Scroll with keyboard |
+| Mouse scroll | Also works |
+
+### Inter-Agent Communication
 
 ```bash
-# Terminal 1: Project A
-cd ~/projects/project-a && cwt
-# Session: cwt-project-a
+# Send task
+wt-task frontend "Implement user registration"
 
-# Terminal 2: Project B
-cd ~/projects/project-b && cwt
-# Session: cwt-project-b
+# Send message
+wt-msg send coordinator "Task completed"
+wt-msg broadcast "API endpoint changed to /v2"
 
-# List all CWT sessions
-cwt --list-all
+# Check messages
+wt-msg status
+wt-msg read
 ```
 
-## Legacy Setup (Worktrees as Siblings)
-
-For existing setups where worktrees are siblings of the main repo:
+### Knowledge Base
 
 ```bash
-cd my-existing-project
+# Search patterns/guidelines
+wt-kb query "error handling"
+wt-kb list
 
-# Create worktrees for each worker
-git worktree add ../workspace-frontend -b feature/frontend
-git worktree add ../workspace-backend -b feature/backend
-git worktree add ../workspace-security -b feature/security
+# Share discovery with team
+wt-kb discover "API rate limit is 100/min"
 ```
 
-Or use the helper:
+## Configuration
+
+### Budget Control
+
+Set spending limits per project:
 
 ```bash
-wt-init frontend backend security
-# Creates: workspace-frontend/, workspace-backend/, workspace-security/
+cwt budget --limit 10 --period daily
+cwt budget --limit 50 --period weekly
 ```
 
-Start the session:
+View in help popup (`Ctrl+B ?`) or:
 
 ```bash
-cwt frontend backend security
+wt-billing          # Current project cost
+wt-billing total    # Total for status bar
 ```
 
-Or let CWT detect worktrees automatically:
+### MCP Server
+
+CWT includes an MCP (Model Context Protocol) server that provides native Claude tools:
+
+| Tool | Description |
+|------|-------------|
+| `kb_query` | Search knowledge base |
+| `kb_list` | List KB entries |
+| `budget_status` | Get current budget/usage |
+| `worker_list` | List active workers |
+| `send_message` | Send inter-agent message |
+
+The MCP server starts automatically and connects via stdio. Configuration is in `.claude/settings.json`.
+
+### Hooks
+
+CWT uses Claude Code hooks for safety and coordination:
+
+| Hook | Purpose |
+|------|---------|
+| `bash-validator` | Blocks dangerous commands for workers |
+| `file-protector` | Protects sensitive files (.env, Dockerfile) |
+| `branch-protector` | Requires work branches, protects main/master |
+| `wt-check` | Shows pending messages, detects compaction |
+
+### Session Overrides
+
+Temporarily modify permissions for current session:
 
 ```bash
-cwt   # Detects existing worktrees
+wt-override allow "git push" --duration 2h
+wt-override block "rm -rf"
+wt-override list
+wt-override clear
 ```
 
-> Note: Legacy mode uses global state in `/tmp/`. For isolated multi-project work, use the project-based setup above.
+### Environment Variables
 
-## Permissionless Mode (Default)
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `CWT_LOG_DIR` | Log directory | `.cwt/logs/` |
+| `CWT_PROJECT_ROOT` | Project root | Auto-detected |
+| `PULSER_INTERVAL` | Activity check interval | 120s |
+| `IDLE_THRESHOLD` | Idle detection threshold | 180s |
 
-CWT runs Claude with `--dangerously-skip-permissions` by default to enable autonomous operation without confirmation prompts.
+## Safety
 
-### Why This Mode?
+### Permissionless Mode (Default)
 
-- **Multi-agent**: Each Claude operates independently, can't wait for human confirmation
-- **Parallel work**: Workers must act autonomously
-- **Efficiency**: No blocking on permission dialogs
+CWT runs Claude with `--dangerously-skip-permissions` to enable autonomous multi-agent operation. Safety is enforced via hooks:
 
-### Safety Measures
+**Workers CANNOT:**
+- `git push`, `git merge`, `git rebase`
+- `azion deploy`, `npm publish`
+- `kill`, `pkill`, `killall`
+- Edit `.env`, `Dockerfile`, deploy configs
 
-Since permission checks are bypassed, safety is enforced via multiple layers:
-
-1. **bash-validator hook** - PreToolUse hook that blocks dangerous commands:
-   - Workers cannot: `git push`, `git merge`, `git rebase`, `kill`, deploy commands
-   - Everyone blocked from: `rm -rf /`, `mkfs`, `dd` to devices
-
-2. **file-protector hook** - Blocks workers from editing sensitive files:
-   - `azion.config.*`, `azion.json`, `.env*`, `Dockerfile`
-
-3. **wt-check hook** - PostToolUse/UserPromptSubmit hook for coordination:
-   - Shows pending messages and votes
-   - Detects context compaction and alerts agents
-
-4. **CLAUDE.md templates** - Instructions that Claude follows
-
-5. **Worktree isolation** - Each worker in separate directory with own branch
-
-6. **Coordinator control** - Only coordinator merges/deploys
-
-7. **Branch protection** - Protected branches (main, master, dev) require work branches
+**Workers CAN:**
+- `git add <file>`, `git commit`, `git status`
+- `npm run dev/build/test`
+- Read files, run tests
 
 ### Strict Mode
 
 For environments requiring native Claude permissions:
 
 ```bash
-cwt --strict    # Uses Claude's native permission system
+cwt --strict
 ```
 
-### Session Overrides
+## Architecture
 
-Temporarily block or auto-approve commands for a session:
-
-```bash
-# Block npm publish for this session
-wt-override block "npm publish"
-
-# Auto-approve test commands
-wt-override approve "npm test"
-
-# View current overrides
-wt-override list
-
-# Clear all overrides
-wt-override clear
-```
-
-### Risks
-
-- Workers CAN execute commands not explicitly blocked
-- Relies on hooks + Claude following CLAUDE.md instructions
-- Always review changes before merging
-
-## Prohibited Operations (Workers)
-
-Workers must NEVER execute these commands:
-
-### Git Destructive
-```bash
-git add -A              # Use: git add <specific files>
-git add .               # Use: git add <specific files>
-git reset --hard        # PROHIBITED - code loss
-git checkout -- .       # PROHIBITED - code loss
-git clean -fd           # PROHIBITED - file loss
-git merge               # PROHIBITED - coordinator does merges
-git rebase              # PROHIBITED - coordinator does rebases
-git push --force        # PROHIBITED
-git push                # Only coordinator pushes
-```
-
-### Deployment (Coordinator Only)
-```bash
-azion deploy            # PROHIBITED - coordinator deploys
-azion update            # PROHIBITED - coordinator updates
-azion delete            # PROHIBITED
-npm publish             # PROHIBITED
-```
-
-### Process Management
-```bash
-kill                    # PROHIBITED - may kill other workers
-pkill                   # PROHIBITED
-killall                 # PROHIBITED
-```
-
-### Allowed Operations
-```bash
-# Safe git
-git add <specific-file>
-git commit -m "message"
-git status
-git diff
-git log
-git stash
-
-# Development
-npm run dev
-npm run build
-npm test
-
-# Reading
-cat, head, tail, grep, ls, find
-```
-
-## Usage
-
-### Initialize Project
-
-```bash
-cwt init                    # Initialize in current directory
-cwt init --name my-project  # With custom name
-```
-
-### Start New Session
-
-```bash
-cwt frontend backend security    # Named workers
-cwt -c frontend backend          # Resume previous Claude sessions (--continue)
-cwt                              # Auto-detect repos/worktrees
-```
-
-### Manage Session
-
-```bash
-cwt --list      # List session for current project
-cwt --list-all  # List ALL CWT sessions (all projects)
-cwt --status    # Show windows
-cwt --kill      # End session for current project
-cwt             # Reconnect to existing session
-```
-
-### Tmux Shortcuts
-
-| Key | Action |
-|-----|--------|
-| `Ctrl+b n` | Next window |
-| `Ctrl+b p` | Previous window |
-| `Ctrl+b 0-9` | Go to window N |
-| `Ctrl+b w` | List windows |
-| `Ctrl+b d` | Detach (keeps running) |
-
-### Mouse/Trackpad
-
-| Action | Effect |
-|--------|--------|
-| Scroll | Navigate history (scrollback) |
-| Click | Select pane/window |
-| `q` or `Esc` | Exit scroll mode |
-
-### Inter-Agent Communication
-
-```bash
-# Send message
-wt-msg send frontend "Implement the login form"
-wt-msg send coordinator "Task completed, ready for merge"
-
-# Broadcast to all
-wt-msg broadcast "Breaking change in API"
-
-# Check messages
-wt-msg check        # Count pending
-wt-msg read         # Read messages
-wt-msg status       # Overview
-
-# Assign task
-wt-task frontend "Create user registration component"
-wt-task backend "Add /api/users endpoint"
-```
-
-## Workflow
-
-### 1. Planning Phase (Coordinator)
-
-```bash
-# Coordinator uses subagents to plan
-# Breaks feature into worker tasks
-# Sends tasks to workers
-wt-task frontend "Implement login UI"
-wt-task backend "Create auth API"
-wt-task security "Add input validation"
-```
-
-### 2. Development Phase (Workers)
-
-Each worker:
-1. Receives task via `wt-msg read`
-2. Uses subagents (Explore, Plan) to understand scope
-3. Implements changes in their worktree
-4. Commits to their feature branch
-5. Notifies coordinator: `wt-msg send coordinator "login UI done"`
-
-### 3. Integration Phase (Coordinator)
-
-```bash
-# Coordinator merges branches
-git merge feature/frontend
-git merge feature/backend
-git merge feature/security
-
-# Resolves conflicts
-# Runs tests
-# Deploys
-```
-
-## Context Compaction Handling
-
-When Claude's context window fills up, it compacts the conversation history. This can cause agents to lose track of their current work.
-
-CWT automatically detects compaction and alerts agents:
-
-1. **PreCompact hook** creates a marker file before compaction
-2. **UserPromptSubmit hook** detects the marker and shows:
-   ```
-   CONTEXT COMPACTED - STOP and report to coordinator:
-   wt-msg send coordinator "CONTEXT RESET - Done: [X] | Doing: [Y] | Plan: [Z] | Decisions: [W]"
-   ```
-3. Workers report their state to the coordinator before resuming
-4. Coordinator validates worker understanding and confirms or corrects
-
-This prevents agents from continuing with stale or incorrect context after compaction.
-
-## Real-Time Communication
-
-CWT includes a Node.js daemon for real-time inter-agent communication via Unix sockets.
-
-### Daemon Features
-
-- **JSON-RPC protocol** over Unix socket
-- **PubSub messaging** - Subscribe to topics, broadcast messages
-- **Worker registry** - Track active workers and heartbeats
-- **Task queue** - Assign and track task completion
-- **Voting system** - Collective decision making
-
-The daemon starts automatically with `cwt` and creates a socket at `.cwt/cwt.sock`.
-
-### Pulser (Activity Monitor)
-
-The pulser monitors all Claude windows and:
-- **Detects idle agents** - Checks if Claude is waiting for input
-- **Detects busy agents** - Recognizes spinners, "Thinking...", "Investigating..."
-- **Auto-continues work** - Sends "continue" or "wt-msg check" when idle
-- **Handles queued input** - Submits pending text in input buffer
-
-```bash
-# Pulser runs automatically, but can be configured:
-PULSER_INTERVAL=120   # Check every 2 minutes (default)
-IDLE_THRESHOLD=180    # Consider idle after 3 minutes (default)
-```
-
-## File Structure
+### File Structure
 
 ```
-claude-worktrees/
+~/.claude-worktrees/
 ├── bin/
-│   ├── cwt                 # Main launcher
-│   ├── tmux-launcher.sh    # Tmux session creator
-│   └── tmux-pulser.sh      # Activity monitor
+│   ├── cwt              # Main CLI
+│   ├── cwt-help         # Help popup
+│   └── tmux-launcher.sh # Session creator
 ├── lib/
-│   ├── wt-msg              # Messaging between agents
-│   ├── wt-task             # Task assignment
-│   ├── wt-init             # Worktree creation helper
-│   ├── wt-override         # Session command overrides
-│   └── wt-setup            # Environment setup
+│   ├── wt-msg           # Messaging
+│   ├── wt-task          # Task assignment
+│   ├── wt-init          # Worktree creation
+│   ├── wt-kb            # Knowledge base
+│   └── wt-billing       # Cost tracking
 ├── daemon/
-│   ├── index.js            # Main daemon entry point
-│   ├── socket-server.js    # Unix socket JSON-RPC server
-│   ├── state-manager.js    # Persistent state management
-│   ├── pubsub.js           # Publish/subscribe messaging
-│   └── voting.js           # Collective voting system
-├── config/
-│   └── tmux.conf           # Tmux configuration (mouse, colors)
-├── templates/
-│   ├── CLAUDE.coord.md     # Coordinator instructions
-│   ├── CLAUDE.worker.md    # Worker instructions
-│   ├── settings.coord.json # Coordinator Claude settings
-│   └── settings.worker.json # Worker Claude settings
+│   ├── index.js         # Main daemon
+│   ├── socket-server.js # JSON-RPC over Unix socket
+│   └── mcp-server.js    # MCP protocol handler
 ├── hooks/
-│   ├── bash-validator.sh   # Command validation (blocks dangerous ops)
-│   ├── file-protector.sh   # Protects sensitive files from workers
-│   ├── init-worker.sh      # Worker initialization hook
-│   ├── mark-compaction.sh  # Creates marker before context compaction
-│   ├── wt-check.sh         # Checks messages/votes, detects compaction
-│   └── statusline.sh       # Status bar hook
-├── install.sh              # Installation script
-└── README.md
+│   ├── bash-validator.sh
+│   ├── file-protector.sh
+│   └── wt-check.sh
+└── templates/
+    ├── CLAUDE.coord.md  # Coordinator instructions
+    └── CLAUDE.worker.md # Worker instructions
 ```
 
-## Logs
-
-All sessions are logged to `.cwt/logs/` within the project:
+### Project Structure
 
 ```
-my-project/.cwt/logs/
-├── cwt-coordinator-20241231-143022.log
-├── cwt-frontend-20241231-143022.log
-├── cwt-backend-20241231-143022.log
-├── cwt-daemon-20241231-143022.log
-└── cwt-pulser-20241231-143022.log
+my-project/
+├── .cwt/
+│   ├── config.json      # Project config
+│   ├── state.json       # Runtime state
+│   ├── cwt.sock         # Daemon socket
+│   └── logs/
+├── main/                # Coordinator repo
+├── workspace-frontend/  # Worker worktree
+└── workspace-backend/   # Worker worktree
 ```
 
-Custom log directory:
-```bash
-export CWT_LOG_DIR=/path/to/logs
-cwt
-```
+### Daemon
 
-## Requirements
-
-- git (with worktree support, 2.5+)
-- tmux
-- jq
-- Node.js (for daemon, optional but recommended)
-- Claude Code CLI
-
-## Configuration
-
-### Environment Variables
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `CWT_LOG_DIR` | Custom log directory | `.cwt/logs/` |
-| `CWT_PROJECT` | Override project directory | Current directory |
-| `PULSER_INTERVAL` | Seconds between activity checks | 120 |
-| `IDLE_THRESHOLD` | Seconds before considered idle | 180 |
+The Node.js daemon provides:
+- **JSON-RPC** over Unix socket
+- **PubSub** messaging between agents
+- **MCP Server** for native Claude tools
+- **Worker registry** with heartbeats
+- **Task queue** for work assignment
 
 ## Troubleshooting
 
-### "Session already exists"
+### Session already exists
 
-```bash
-cwt --kill    # End existing session
-cwt           # Start fresh
-```
-
-### Workers Not Seeing Messages
-
-Check if daemon is running:
-```bash
-ps aux | grep "daemon/index.js"
-```
-
-Check socket exists:
-```bash
-ls -la .cwt/cwt.sock
-```
-
-Restart the session:
 ```bash
 cwt --kill && cwt
 ```
 
-### Worktree Not Found
+### Workers not seeing messages
 
-Verify worktrees exist:
 ```bash
-git worktree list
+# Check daemon
+ps aux | grep "daemon/index.js"
+ls -la .cwt/cwt.sock
+
+# Restart
+cwt --kill && cwt
 ```
 
-Create if missing:
+### Worktree not found
+
 ```bash
+git worktree list
 git worktree add ../workspace-name -b feature/name
 ```
 
-### Daemon Not Starting
+### MCP not connecting
 
-Check Node.js is installed:
-```bash
-node --version
-```
-
-Check daemon logs:
-```bash
-cat .cwt/logs/cwt-daemon-*.log
-```
-
-### Pulser Not Working
-
-Check pulser logs:
-```bash
-cat .cwt/cwt-pulser.log
-```
-
-Verify pulser is running:
-```bash
-ps aux | grep tmux-pulser
+Check `.claude/settings.json` has correct paths:
+```json
+{
+  "mcpServers": {
+    "cwt": {
+      "command": "node",
+      "args": ["~/.claude-worktrees/daemon/mcp-server.js"]
+    }
+  }
+}
 ```
 
 ## License
