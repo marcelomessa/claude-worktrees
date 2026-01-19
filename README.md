@@ -20,6 +20,7 @@ Run multiple Claude Code agents in parallel, each with isolated workspace and br
 | **Tmux Sessions** | All agents in one terminal, easy navigation |
 | **Inter-Agent Messaging** | `wt-msg`, `wt-task` for coordination |
 | **MCP Server** | Native Claude tools via Model Context Protocol |
+| **Skills** | Workflow templates for coordinator/worker roles |
 | **Knowledge Base** | Shared patterns and guidelines (`wt-kb`) |
 | **Budget Control** | Spending limits with usage tracking |
 | **Bash Validator** | Blocks dangerous commands for workers |
@@ -177,6 +178,19 @@ wt-kb list
 # Share discovery with team
 wt-kb discover "API rate limit is 100/min"
 ```
+
+### Skills
+
+CWT includes Claude Code skills (workflow templates) that are automatically loaded:
+
+| Skill | Description |
+|-------|-------------|
+| `cwt-coordinator` | Coordinator role: task distribution, merging, deployment |
+| `cwt-worker` | Worker role: boundaries, safe operations, reporting |
+| `cwt-kb` | Knowledge base consultation before asking questions |
+| `cwt-budget` | Budget awareness before expensive operations |
+
+Skills are installed to `.claude/skills/` in each workspace and teach Claude the CWT workflow.
 
 ## Configuration
 
