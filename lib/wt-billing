@@ -29,12 +29,28 @@ find_cwt_root() {
 
 CWT_ROOT=$(find_cwt_root)
 TODAY=$(date +%Y%m%d)
+CACHE_MARKER="$HOME/.cwt-ccusage-date"
 
 # Check if ccusage is available
 if ! command -v npx &>/dev/null; then
   echo "Error: npx not found"
   exit 1
 fi
+
+# Refresh ccusage cache once per day (run without --offline)
+refresh_cache_if_needed() {
+  local last_refresh=""
+  [[ -f "$CACHE_MARKER" ]] && last_refresh=$(cat "$CACHE_MARKER" 2>/dev/null)
+
+  if [[ "$last_refresh" != "$TODAY" ]]; then
+    # First call of the day - refresh cache (without --offline)
+    npx ccusage -s "$TODAY" -j >/dev/null 2>&1
+    echo "$TODAY" > "$CACHE_MARKER"
+  fi
+}
+
+# Refresh cache on first call of the day
+refresh_cache_if_needed
 
 case "${1:-project}" in
   total)
