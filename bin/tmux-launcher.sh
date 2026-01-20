@@ -462,17 +462,22 @@ EOF
 wait_for_claude() {
   local session="$1"
   local window="$2"
-  local max_attempts="${3:-30}"  # 30 tentativas = ~15 segundos
+  local max_attempts="${3:-60}"  # 60 tentativas = ~30 segundos
   local attempt=0
 
   while [[ $attempt -lt $max_attempts ]]; do
     # Capturar últimas linhas do pane
-    local output=$(tmux capture-pane -t "$session:$window" -p -S -5 2>/dev/null)
+    local output=$(tmux capture-pane -t "$session:$window" -p -S -10 2>/dev/null)
 
     # Claude pronto: mostra ">" prompt ou está aguardando input
-    # Claude falhou: mostra "%" (zsh) ou erro
+    # Também aceita se já está mostrando conteúdo do Claude (resposta em andamento)
     if echo "$output" | grep -qE "^>" 2>/dev/null; then
       return 0  # Claude pronto
+    fi
+
+    # Se Claude está carregando ou mostrando output, considerar OK
+    if echo "$output" | grep -qE "(Claude|Loading|Resuming|⠋|⠙|⠹|⠸|⠼|⠴|⠦|⠧|⠇|⠏)" 2>/dev/null; then
+      return 0  # Claude iniciando
     fi
 
     # Se voltou ao shell (% prompt após comando claude), falhou
