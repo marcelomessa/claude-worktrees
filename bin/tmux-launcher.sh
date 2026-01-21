@@ -586,6 +586,9 @@ fi
 mkdir -p "$LOG_DIR"
 echo "📝 Logs: $LOG_DIR/cwt-*-$TIMESTAMP.log"
 
+# Criar diretório de histórico (isola HISTFILE por worker)
+mkdir -p "$PROJECT_ROOT/.cwt/history"
+
 # ============================================================================
 # INICIAR DAEMON DE COMUNICAÇÃO
 # ============================================================================
@@ -669,6 +672,8 @@ tmux send-keys -t "$SESSION_NAME:0" "export CWT_PROJECT_ROOT='$PROJECT_ROOT'" En
 sleep 0.2
 tmux send-keys -t "$SESSION_NAME:0" "export CWT_SOCKET='$CWT_SOCKET'" Enter
 sleep 0.2
+tmux send-keys -t "$SESSION_NAME:0" "export HISTFILE='$PROJECT_ROOT/.cwt/history/coordinator.history'" Enter
+sleep 0.2
 tmux send-keys -t "$SESSION_NAME:0" "cd '$COORD_DIR'" Enter
 sleep 0.2
 tmux send-keys -t "$SESSION_NAME:0" "echo '🎯 COORDINATOR - $COORD_DIR_NAME ($CURRENT_BRANCH)'" Enter
@@ -744,6 +749,8 @@ for workspace in "${WORKSPACES[@]}"; do
   tmux send-keys -t "$SESSION_NAME:$WINDOW_NUM" "export CWT_PROJECT_ROOT='$PROJECT_ROOT'" Enter
   sleep 0.2
   tmux send-keys -t "$SESSION_NAME:$WINDOW_NUM" "export CWT_SOCKET='$CWT_SOCKET'" Enter
+  sleep 0.2
+  tmux send-keys -t "$SESSION_NAME:$WINDOW_NUM" "export HISTFILE='$PROJECT_ROOT/.cwt/history/$workspace.history'" Enter
   sleep 0.2
   tmux send-keys -t "$SESSION_NAME:$WINDOW_NUM" "cd '$WORKSPACE_DIR'" Enter
   sleep 0.2

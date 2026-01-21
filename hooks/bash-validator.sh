@@ -23,7 +23,7 @@ COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty')
 WORKER_ID="${CLAUDE_WORKER_ID:-}"
 
 # =============================================================================
-# FIND PROJECT ROOT
+# FIND PROJECT ROOT (needed early for coordinator detection)
 # =============================================================================
 find_cwt_root() {
   if [[ -n "$CWT_PROJECT_ROOT" && -d "$CWT_PROJECT_ROOT/.cwt" ]]; then
@@ -44,6 +44,19 @@ find_cwt_root() {
 
 CWT_ROOT=$(find_cwt_root)
 OVERRIDES_FILE="${CWT_ROOT:-.}/.cwt/session-overrides.json"
+
+# =============================================================================
+# DETECT COORDINATOR (fallback quando CLAUDE_WORKER_ID não está definido)
+# =============================================================================
+if [[ -z "$WORKER_ID" && -n "$CWT_ROOT" && -f "$CWT_ROOT/.cwt/config.json" ]]; then
+  COORD_DIR=$(jq -r '.coordinator // empty' "$CWT_ROOT/.cwt/config.json" 2>/dev/null)
+  if [[ -n "$COORD_DIR" && "$COORD_DIR" != "null" ]]; then
+    # Verificar se estamos no diretório do coordinator
+    if [[ "$PWD" == *"/$COORD_DIR"* ]] || [[ "$PWD" == *"/$COORD_DIR" ]] || [[ "$(basename "$PWD")" == "$COORD_DIR" ]]; then
+      WORKER_ID="coordinator"
+    fi
+  fi
+fi
 
 block() {
   echo "❌ BLOCKED: $1" >&2
