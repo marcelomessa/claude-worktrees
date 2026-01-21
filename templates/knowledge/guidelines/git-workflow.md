@@ -35,16 +35,31 @@ git checkout main/master    # bloqueado
 ### Coordinator
 
 ```bash
-# Review de mudanças do worker
-git diff worker-branch
+# 1. SEMPRE fetch primeiro (atualiza referências)
+git fetch origin
 
-# Merge quando aprovado
+# 2. Review de mudanças do worker
+git diff main..feature/worker-branch
+
+# 3. Garantir que está na main
 git checkout main
-git merge worker-branch --no-ff
 
-# Push (após review)
+# 4. Merge com --no-ff (SEMPRE - preserva histórico)
+git merge feature/worker-branch --no-ff -m "Merge feature/X: description"
+
+# 5. Push (após review e testes)
 git push origin main
 ```
+
+### Worktree Merge - Ordem Correta
+
+1. Worker faz commit na feature branch (worktree separada)
+2. Worker avisa coordinator: `wt-msg send coordinator "done"`
+3. Coordinator faz `git fetch origin`
+4. Coordinator revisa: `git diff main..feature/branch`
+5. Coordinator merge: `git merge feature/branch --no-ff`
+6. Coordinator push: `git push origin main`
+7. Coordinator notifica worker para próxima task
 
 ## Antes de Commit
 

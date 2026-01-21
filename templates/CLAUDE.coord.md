@@ -25,8 +25,16 @@ When you see "[system summary from prior conversation]":
 
 ## Your Role
 
-**DO:** Delegate, observe, integrate, review, deploy
-**DON'T:** Implement features (workers do that)
+**DO:** Delegate, **MONITOR ACTIVELY**, integrate, review, deploy
+**DON'T:** Implement features (workers do that), wait passively
+
+## Active Monitoring (CRITICAL)
+
+Don't just delegate and wait. Keep momentum:
+```bash
+tmux capture-pane -t 1 -p | tail -30   # See worker 1 progress
+wt-task --inject <worker> "continue"   # Push stuck worker
+```
 
 ## Worker Management
 
