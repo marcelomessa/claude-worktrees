@@ -458,32 +458,33 @@ EOF
 # FUNÇÕES DE ESPERA
 # ============================================================================
 
-# Aguardar Claude estar pronto (detectar prompt)
+# Aguardar Claude estar pronto (detectar prompt ">")
 wait_for_claude() {
   local session="$1"
   local window="$2"
-  local max_attempts="${3:-60}"  # 60 tentativas = ~30 segundos
+  local max_attempts="${3:-90}"  # 90 tentativas = ~45 segundos
   local attempt=0
+  local saw_loading=0
 
   while [[ $attempt -lt $max_attempts ]]; do
     # Capturar últimas linhas do pane
     local output=$(tmux capture-pane -t "$session:$window" -p -S -10 2>/dev/null)
 
-    # Claude pronto: mostra ">" prompt ou está aguardando input
-    # Também aceita se já está mostrando conteúdo do Claude (resposta em andamento)
-    if echo "$output" | grep -qE "^>" 2>/dev/null; then
-      return 0  # Claude pronto
+    # Claude pronto: mostra "❯" prompt ou "bypass permissions" ou ">"
+    if echo "$output" | grep -qE "(^>|❯|bypass permissions)" 2>/dev/null; then
+      return 0  # Claude pronto para input
     fi
 
-    # Se Claude está carregando ou mostrando output, considerar OK
-    if echo "$output" | grep -qE "(Claude|Loading|Resuming|⠋|⠙|⠹|⠸|⠼|⠴|⠦|⠧|⠇|⠏)" 2>/dev/null; then
-      return 0  # Claude iniciando
+    # Se Claude está carregando, marcar e continuar esperando
+    if echo "$output" | grep -qE "(Loading|Resuming|⠋|⠙|⠹|⠸|⠼|⠴|⠦|⠧|⠇|⠏)" 2>/dev/null; then
+      saw_loading=1
     fi
 
-    # Se voltou ao shell (% prompt após comando claude), falhou
-    if echo "$output" | grep -qE "^[^>]*%[[:space:]]*$" 2>/dev/null && \
-       echo "$output" | grep -qE "(No conversation|Error|failed)" 2>/dev/null; then
-      return 1  # Claude falhou
+    # Se voltou ao shell (% prompt) após mostrar sinais de Claude, falhou
+    if echo "$output" | grep -qE "^[^>]*%[[:space:]]*$" 2>/dev/null; then
+      if [[ $saw_loading -eq 1 ]] || echo "$output" | grep -qE "(No conversation|Error|failed)" 2>/dev/null; then
+        return 1  # Claude falhou
+      fi
     fi
 
     sleep 0.5
