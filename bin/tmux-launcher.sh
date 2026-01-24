@@ -565,10 +565,10 @@ if [[ -x "$WT_BRANCH" ]]; then
 fi
 
 # Verificar se sessão já existe
-if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
+if tmux has-session -t "=$SESSION_NAME" 2>/dev/null; then
   echo "⚠️  Sessão '$SESSION_NAME' já existe."
-  echo "   Usar: tmux attach -t $SESSION_NAME  (para reconectar)"
-  echo "   Usar: tmux kill-session -t $SESSION_NAME  (para encerrar)"
+  echo "   Usar: tmux attach -t =$SESSION_NAME  (para reconectar)"
+  echo "   Usar: tmux kill-session -t =$SESSION_NAME  (para encerrar)"
   exit 1
 fi
 

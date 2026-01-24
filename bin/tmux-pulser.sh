@@ -213,7 +213,7 @@ check_window() {
 # Loop principal
 while true; do
   # Verificar se sessão tmux existe
-  if ! tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
+  if ! tmux has-session -t "=$SESSION_NAME" 2>/dev/null; then
     log "❌ Sessão '$SESSION_NAME' não encontrada. Encerrando."
     exit 1
   fi
