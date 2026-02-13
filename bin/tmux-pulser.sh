@@ -1,19 +1,19 @@
 #!/bin/bash
 # =============================================================================
-# TMUX PULSER - Monitora workers Claude e envia comandos quando inativos
+# TMUX PULSER - Monitors Claude workers and sends commands when idle
 # =============================================================================
-# Versão tmux do pulser original
+# Tmux version of the original pulser
 # =============================================================================
 
-# Detectar .cwt/ subindo a árvore de diretórios
+# Detect .cwt/ by walking up the directory tree
 find_cwt_root() {
-  # 1. Variável de ambiente
+  # 1. Environment variable
   if [[ -n "$CWT_PROJECT_ROOT" && -d "$CWT_PROJECT_ROOT/.cwt" ]]; then
     echo "$CWT_PROJECT_ROOT"
     return 0
   fi
 
-  # 2. Subir árvore
+  # 2. Walk up tree
   local dir="$PWD"
   while [[ "$dir" != "/" ]]; do
     if [[ -d "$dir/.cwt" ]]; then
@@ -26,7 +26,7 @@ find_cwt_root() {
   return 1
 }
 
-# Determinar arquivos de estado
+# Determine state files
 CWT_ROOT=$(find_cwt_root)
 if [[ -n "$CWT_ROOT" ]]; then
   PROJECT_NAME=$(basename "$CWT_ROOT")
@@ -70,13 +70,13 @@ update_billing_cache() {
     if [[ -x "$WT_BILLING" ]]; then
       "$WT_BILLING" total > "$BILLING_CACHE" 2>/dev/null &
       LAST_BILLING_UPDATE=$now
-      log "💰 Billing cache atualizado"
+      log "💰 Billing cache updated"
     fi
   fi
 }
 
 > "$LOG_FILE"
-log "🔄 Tmux Pulser iniciado"
+log "🔄 Tmux Pulser started"
 log "   Session: $SESSION_NAME"
 log "   Interval: ${INTERVAL}s"
 log "   Billing interval: ${BILLING_INTERVAL}s"
@@ -114,35 +114,35 @@ check_window() {
   local window_num="$1"
   local window_name="$2"
 
-  # Capturar conteúdo via tmux
+  # Capture content via tmux
   local content=$(tmux capture-pane -t "$SESSION_NAME:$window_num" -p 2>/dev/null)
   [[ -z "$content" ]] && return 1
 
   local last_time=$(extract_datetime "$content")
   local idle_secs=$(seconds_since "$last_time")
 
-  # Detectar se Claude está esperando input
-  # Indicadores: "bypass permissions" ou linha vazia após separador ────
+  # Detect if Claude is waiting for input
+  # Indicators: "bypass permissions" or empty line after separator ────
   local waiting_input=false
   if echo "$content" | tail -3 | grep -qE 'bypass permissions|shift\+tab to cycle' 2>/dev/null; then
     waiting_input=true
   fi
 
-  # Detectar se há texto no buffer de input (texto antes de ↵ send)
+  # Detect if there's text in the input buffer (text before ↵ send)
   local has_pending_input=false
   if echo "$content" | tail -5 | grep -qE '↵ send' 2>/dev/null; then
     has_pending_input=true
   fi
 
-  # Detectar se Claude está processando
-  # Indicadores: spinner, "Thinking", "Hatching", "Investigating", contador de tempo
+  # Detect if Claude is processing
+  # Indicators: spinner, "Thinking", "Hatching", "Investigating", time counter
   local is_busy=false
   if echo "$content" | tail -10 | grep -qE '⠋|⠙|⠹|⠸|⠼|⠴|⠦|⠧|⠇|⠏|✻|Thinking|Working|Hatching|Investigating|Reading|Searching|Analyzing|[0-9]+m [0-9]+s|[0-9]+s \·' 2>/dev/null; then
     is_busy=true
     waiting_input=false
   fi
 
-  # Detectar se há mensagens enfileiradas (indicador de que algo já está pendente)
+  # Detect if there are queued messages (indicator that something is already pending)
   if echo "$content" | tail -5 | grep -qE 'Press up to edit queued|queued messages' 2>/dev/null; then
     is_busy=true
     waiting_input=false
@@ -153,42 +153,42 @@ check_window() {
 
   log "   [$window_num] $window_name: idle=${idle_secs}s waiting=$waiting_input busy=$is_busy pending=$has_pending_input"
 
-  # Se há input pendente (texto digitado esperando Enter)
-  # TODO: Detectar se é autosugestão do Claude (tem códigos ANSI dim/itálico)
-  # Por enquanto: workers executam após threshold, coordinator nunca
+  # If there's pending input (typed text waiting for Enter)
+  # TODO: Detect if it's Claude's auto-suggestion (has dim/italic ANSI codes)
+  # For now: workers execute after threshold, coordinator never
   if [[ "$has_pending_input" == "true" ]]; then
     if [[ "$window_name" == "coordinator" ]]; then
-      # Coordinator: nunca auto-submeter input pendente (pode ser autosugestão)
-      log "   ⏸️  Input pendente em coordinator - aguardando humano"
+      # Coordinator: never auto-submit pending input (could be auto-suggestion)
+      log "   ⏸️  Pending input in coordinator - waiting for human"
       return 1
     elif [[ $idle_secs -gt $IDLE_THRESHOLD ]]; then
-      # Worker: submeter após threshold (provavelmente comando do coordinator)
-      log "   ➡️  Enviando Enter para $window_name (input pendente + idle)"
+      # Worker: submit after threshold (probably a command from coordinator)
+      log "   ➡️  Sending Enter to $window_name (pending input + idle)"
       tmux send-keys -t "$SESSION_NAME:$window_num" "" C-m
       return 0
     else
-      log "   ⏳  Input pendente em $window_name - aguardando threshold"
+      log "   ⏳  Pending input in $window_name - waiting for threshold"
       return 1
     fi
   fi
 
-  # Threshold diferente para coordinator (operado por humano) vs workers (autônomos)
+  # Different threshold for coordinator (human-operated) vs workers (autonomous)
   local threshold=$IDLE_THRESHOLD
   if [[ "$window_name" == "coordinator" ]]; then
-    # Coordinator: só intervir após 5 minutos de inatividade, e APENAS se houver mensagens
+    # Coordinator: only intervene after 5 minutes of inactivity, and ONLY if there are messages
     threshold="${COORD_IDLE_THRESHOLD:-300}"
   fi
 
-  # Se está esperando input e idle por muito tempo
+  # If waiting for input and idle for too long
   if [[ "$waiting_input" == "true" && $idle_secs -gt $threshold ]]; then
     local cmd=""
 
     if [[ "$window_name" == "coordinator" ]]; then
-      # Coordinator: SÓ notificar se houver mensagens pendentes dos workers
+      # Coordinator: ONLY notify if there are pending messages from workers
       if [[ "$has_msgs" == "true" ]]; then
         cmd="wt-msg read"
       fi
-      # NÃO enviar "continue" para coordinator - deixar humano decidir
+      # DO NOT send "continue" to coordinator - let human decide
     else
       # Worker: only notify if there are pending messages
       # Don't send wt-msg check - it wastes tokens when nothing pending
@@ -199,7 +199,7 @@ check_window() {
     fi
 
     if [[ -n "$cmd" ]]; then
-      log "   ➡️  Enviando '$cmd' para $window_name"
+      log "   ➡️  Sending '$cmd' to $window_name"
       tmux send-keys -t "$SESSION_NAME:$window_num" "$cmd"
       sleep 0.1
       tmux send-keys -t "$SESSION_NAME:$window_num" "" C-m
@@ -210,29 +210,29 @@ check_window() {
   return 1
 }
 
-# Loop principal
+# Main loop
 while true; do
-  # Verificar se sessão tmux existe
+  # Check if tmux session exists
   if ! tmux has-session -t "=$SESSION_NAME" 2>/dev/null; then
-    log "❌ Sessão '$SESSION_NAME' não encontrada. Encerrando."
+    log "❌ Session '$SESSION_NAME' not found. Exiting."
     exit 1
   fi
 
-  # Verificar se diretório do projeto ainda existe (evita pulser órfão)
+  # Check if project directory still exists (prevents orphan pulser)
   if [[ -n "$CWT_ROOT" && ! -d "$CWT_ROOT/.cwt" ]]; then
-    log "❌ Projeto '$CWT_ROOT' não existe mais. Encerrando pulser órfão."
+    log "❌ Project '$CWT_ROOT' no longer exists. Stopping orphan pulser."
     exit 1
   fi
 
   # Update billing cache periodically
   update_billing_cache
 
-  log "🔍 Verificando agentes..."
+  log "🔍 Checking agents..."
 
-  # Verificar coordinator (window 0)
+  # Check coordinator (window 0)
   check_window 0 "coordinator"
 
-  # Verificar workers
+  # Check workers
   if [[ -f "$WORKSPACES_FILE" ]]; then
     window_num=1
     while IFS= read -r worker; do
@@ -240,12 +240,12 @@ while true; do
       ((window_num++))
     done < "$WORKSPACES_FILE"
   else
-    log "⚠️  Arquivo de workspaces não encontrado"
+    log "⚠️  Workspaces file not found"
     for i in {1..3}; do
       check_window "$i" "worker-$i" 2>/dev/null
     done
   fi
 
-  log "💤 Aguardando ${INTERVAL}s..."
+  log "💤 Waiting ${INTERVAL}s..."
   sleep "$INTERVAL"
 done

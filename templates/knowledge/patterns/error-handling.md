@@ -7,35 +7,35 @@ keywords: [error, exception, try, catch, handling, fallback]
 
 # Error Handling Pattern
 
-## Princípio
+## Principle
 
-Sempre trate erros de forma explícita. Nunca silencie erros sem log.
+Always handle errors explicitly. Never silence errors without logging.
 
 ## JavaScript/TypeScript
 
 ```typescript
-// Bom: tratamento explícito
+// Good: explicit handling
 try {
   const result = await riskyOperation();
   return result;
 } catch (error) {
   console.error('[Context] Operation failed:', error.message);
-  // Re-throw com contexto ou return fallback
+  // Re-throw with context or return fallback
   throw new Error(`Operation failed: ${error.message}`);
 }
 
-// Ruim: silenciar erro
+// Bad: silencing error
 try {
   await riskyOperation();
 } catch (e) {
-  // Nunca faça isso!
+  // Never do this!
 }
 ```
 
 ## Bash
 
 ```bash
-# Bom: set -e + tratamento específico
+# Good: set -e + specific handling
 set -e
 
 operation || {
@@ -43,21 +43,21 @@ operation || {
   exit 1
 }
 
-# Com cleanup
+# With cleanup
 cleanup() {
   rm -f "$TEMP_FILE"
 }
 trap cleanup EXIT
 ```
 
-## Quando usar fallbacks
+## When to use fallbacks
 
-1. Operações não-críticas (cache miss → fetch)
-2. Degradação graceful (feature desabilitada)
-3. Configuração opcional (usar defaults)
+1. Non-critical operations (cache miss → fetch)
+2. Graceful degradation (feature disabled)
+3. Optional configuration (use defaults)
 
-## Quando propagar erro
+## When to propagate errors
 
-1. Operações críticas (dados corrompidos)
-2. Validação de input (user error)
-3. Dependências obrigatórias
+1. Critical operations (corrupted data)
+2. Input validation (user error)
+3. Mandatory dependencies

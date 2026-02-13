@@ -1,15 +1,15 @@
 #!/usr/bin/env node
 
 /**
- * CWT Daemon - Coordenador de comunicação entre agentes Claude
+ * CWT Daemon - Communication coordinator between Claude agents
  *
- * Gerencia comunicação em tempo real via Unix socket por projeto.
+ * Manages real-time communication via Unix socket per project.
  *
  * Usage:
  *   node daemon/index.js <project-root>
- *   node daemon/index.js /path/to/project   # Socket em /path/to/project/.cwt/cwt.sock
+ *   node daemon/index.js /path/to/project   # Socket at /path/to/project/.cwt/cwt.sock
  *
- * O daemon usa:
+ * The daemon uses:
  *   - Socket: <project-root>/.cwt/cwt.sock
  *   - State:  <project-root>/.cwt/state.json
  */
@@ -22,11 +22,11 @@ const Voting = require('./voting');
 const SocketServer = require('./socket-server');
 const KnowledgeManager = require('./knowledge-manager');
 
-// Determinar project root
+// Determine project root
 const PROJECT_ROOT = process.argv[2] || process.cwd();
 const CWT_DIR = path.join(PROJECT_ROOT, '.cwt');
 
-// Validar que .cwt existe
+// Validate that .cwt exists
 if (!fs.existsSync(CWT_DIR)) {
   console.error(`Error: .cwt directory not found in ${PROJECT_ROOT}`);
   console.error('Run "cwt init" first to initialize the project.');
@@ -36,13 +36,13 @@ if (!fs.existsSync(CWT_DIR)) {
 const SOCKET_PATH = path.join(CWT_DIR, 'cwt.sock');
 const STATE_FILE = path.join(CWT_DIR, 'state.json');
 
-// Ler nome do projeto do config
+// Read project name from config
 let projectName = path.basename(PROJECT_ROOT);
 try {
   const config = JSON.parse(fs.readFileSync(path.join(CWT_DIR, 'config.json'), 'utf8'));
   projectName = config.name || projectName;
 } catch (e) {
-  // Usar nome do diretório
+  // Use directory name
 }
 
 console.log('═══════════════════════════════════════════════════════');
@@ -56,20 +56,20 @@ console.log(`  PID:     ${process.pid}`);
 console.log('═══════════════════════════════════════════════════════');
 console.log('');
 
-// Salvar PID para que tmux-launcher possa matar o daemon depois
+// Save PID so tmux-launcher can kill the daemon later
 fs.writeFileSync(path.join(CWT_DIR, 'daemon.pid'), String(process.pid));
 
-// Inicializar componentes
+// Initialize components
 const stateManager = new StateManager(STATE_FILE, projectName);
 const pubsub = new PubSub();
 const voting = new Voting(pubsub, stateManager);
 const knowledgeManager = new KnowledgeManager(PROJECT_ROOT);
 const socketServer = new SocketServer(SOCKET_PATH, stateManager, pubsub, voting, knowledgeManager);
 
-// Iniciar servidor
+// Start server
 socketServer.start();
 
-// Status periódico
+// Periodic status
 const statusInterval = setInterval(() => {
   const workers = stateManager.getActiveWorkers();
   const stats = pubsub.getStats();
@@ -86,7 +86,7 @@ const shutdown = (signal) => {
   socketServer.stop();
   stateManager.destroy();
 
-  // Remover PID file
+  // Remove PID file
   try {
     fs.unlinkSync(path.join(CWT_DIR, 'daemon.pid'));
   } catch (e) {}
@@ -98,7 +98,7 @@ const shutdown = (signal) => {
 process.on('SIGINT', () => shutdown('SIGINT'));
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 
-// Capturar erros não tratados
+// Catch unhandled errors
 process.on('uncaughtException', (err) => {
   console.error('[Daemon] Uncaught exception:', err);
 });

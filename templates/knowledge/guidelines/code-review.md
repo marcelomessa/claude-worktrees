@@ -7,60 +7,60 @@ keywords: [review, code, quality, standards, pr, pull-request]
 
 # Code Review Guidelines
 
-## Antes de Pedir Review
+## Before Requesting Review
 
-1. Código compila/roda sem erros
-2. Testes passam (se existirem)
-3. Commit message clara
-4. Mudanças focadas (uma feature/fix por vez)
+1. Code compiles/runs without errors
+2. Tests pass (if they exist)
+3. Clear commit message
+4. Focused changes (one feature/fix at a time)
 
-## Checklist de Review
+## Review Checklist
 
-### Funcionalidade
-- [ ] Resolve o problema proposto
-- [ ] Não quebra features existentes
-- [ ] Edge cases tratados
+### Functionality
+- [ ] Solves the proposed problem
+- [ ] Doesn't break existing features
+- [ ] Edge cases handled
 
-### Segurança
-- [ ] Input validation (especialmente user input)
-- [ ] Sem secrets hardcoded
-- [ ] Sem SQL injection / XSS vulnerabilities
-- [ ] Permissões verificadas
+### Security
+- [ ] Input validation (especially user input)
+- [ ] No hardcoded secrets
+- [ ] No SQL injection / XSS vulnerabilities
+- [ ] Permissions verified
 
-### Qualidade
-- [ ] Código legível e auto-documentado
-- [ ] Sem duplicação desnecessária
-- [ ] Sem código morto / comentado
-- [ ] Nomes significativos (variáveis, funções)
+### Quality
+- [ ] Readable and self-documented code
+- [ ] No unnecessary duplication
+- [ ] No dead / commented-out code
+- [ ] Meaningful names (variables, functions)
 
 ### Performance
-- [ ] Sem N+1 queries
-- [ ] Sem loops desnecessários
-- [ ] Recursos liberados (files, connections)
+- [ ] No N+1 queries
+- [ ] No unnecessary loops
+- [ ] Resources released (files, connections)
 
-## Comunicação Worker → Coordinator
+## Communication Worker → Coordinator
 
 ```bash
-# Avisar que está pronto para review
-wt-msg send coordinator "Branch frontend-auth pronta para review"
+# Notify that it's ready for review
+wt-msg send coordinator "Branch frontend-auth ready for review"
 
-# Detalhes do que foi feito
-wt-msg send coordinator "Implementei login OAuth. Ver commits em frontend-auth"
+# Details of what was done
+wt-msg send coordinator "Implemented OAuth login. See commits in frontend-auth"
 ```
 
-## Comunicação Coordinator → Worker
+## Communication Coordinator → Worker
 
 ```bash
-# Aprovar
-wt-msg send frontend "Aprovado! Farei merge agora"
+# Approve
+wt-msg send frontend "Approved! Will merge now"
 
-# Solicitar mudanças
-wt-msg send frontend "Por favor: 1) Adicionar validação email, 2) Tratar erro 401"
+# Request changes
+wt-msg send frontend "Please: 1) Add email validation, 2) Handle error 401"
 ```
 
 ## Merge Checklist
 
-- [ ] CI passou (se disponível)
-- [ ] Conflitos resolvidos
-- [ ] Changelog atualizado (se aplicável)
-- [ ] Branch pode ser deletada após merge
+- [ ] CI passed (if available)
+- [ ] Conflicts resolved
+- [ ] Changelog updated (if applicable)
+- [ ] Branch can be deleted after merge

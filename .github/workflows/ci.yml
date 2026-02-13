@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  shellcheck:
+    name: ShellCheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install ShellCheck
+        run: sudo apt-get install -y shellcheck
+      - name: Run ShellCheck on scripts
+        run: |
+          find bin/ lib/ hooks/ -type f -name '*.sh' -o -type f ! -name '*.*' | \
+            xargs file | grep -i 'shell\|bash' | cut -d: -f1 | \
+            xargs shellcheck --severity=error --shell=bash || true
+
+  syntax:
+    name: Bash Syntax Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate bash syntax
+        run: |
+          errors=0
+          for f in bin/cwt bin/tmux-launcher.sh bin/tmux-pulser.sh \
+                   lib/wt-* hooks/*.sh; do
+            if ! bash -n "$f" 2>&1; then
+              echo "FAIL: $f"
+              errors=$((errors + 1))
+            fi
+          done
+          exit $errors
+
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check for secrets
+        run: |
+          # Check for common secret patterns
+          if grep -rE '(ANTHROPIC_API_KEY|API_KEY|SECRET_KEY|PASSWORD|TOKEN)=' \
+               --include='*.sh' --include='*.js' --include='*.json' \
+               --include='*.md' . | grep -v '.gitignore' | grep -v 'SECURITY.md' | \
+               grep -v 'README.md' | grep -v node_modules; then
+            echo "WARNING: Possible secrets found"
+            exit 1
+          fi
+      - name: Check for hardcoded paths
+        run: |
+          if grep -rn '/Users/' --include='*.sh' --include='*.js' \
+               --include='*.json' . | grep -v node_modules | grep -v '.git/'; then
+            echo "WARNING: Hardcoded user paths found"
+            exit 1
+          fi

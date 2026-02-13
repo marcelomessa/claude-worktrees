@@ -2,8 +2,8 @@
 # =============================================================================
 # TMUX LAUNCHER - Multi-Agent Claude Environment with Tmux
 # =============================================================================
-# Cria sessão tmux com múltiplas windows para workers Claude
-# Suporta estrutura de projeto com .cwt/ ou modo legado (git worktrees)
+# Creates tmux session with multiple windows for Claude workers
+# Supports project structure with .cwt/ or legacy mode (git worktrees)
 #
 # Uso: ./tmux-launcher.sh [--continue|-c] [--strict] [workspace1] [workspace2] ...
 #   --continue, -c  Resume previous Claude sessions in each worker
@@ -13,7 +13,7 @@
 # Parse arguments (preserve exported values from cwt)
 CONTINUE_FLAG="${CONTINUE_FLAG:-}"
 SKIP_PERMISSIONS="${SKIP_PERMISSIONS:-1}"  # Default: skip permissions, use bash-validator
-CWT_SESSION_NAME="${CWT_SESSION_NAME:-}"   # Nome da sessão CWT (para agrupar sessões Claude)
+CWT_SESSION_NAME="${CWT_SESSION_NAME:-}"   # CWT session name (to group Claude sessions)
 WORKSPACES_ARGS=()
 
 while [[ $# -gt 0 ]]; do
@@ -45,33 +45,33 @@ done
 set -- "${WORKSPACES_ARGS[@]}"
 
 # =============================================================================
-# SESSION MANAGEMENT - Agrupa sessões Claude de todos os worktrees
+# SESSION MANAGEMENT - Groups Claude sessions from all worktrees
 # =============================================================================
 
 generate_uuid() {
-  # Gera UUID v4
+  # Generate UUID v4
   if command -v uuidgen &>/dev/null; then
     uuidgen | tr '[:upper:]' '[:lower:]'
   else
-    # Fallback usando /dev/urandom
+    # Fallback using /dev/urandom
     od -x /dev/urandom | head -1 | awk '{print $2$3"-"$4"-4"substr($5,2)"-"substr($6,1,1)"0"substr($6,2)"-"$7$8$9}'
   fi
 }
 
-# Arquivo de sessões
+# Sessions file
 get_sessions_dir() {
   local project_root="$1"
   echo "$project_root/.cwt/sessions"
 }
 
-# Salvar sessão com UUIDs de todos os worktrees
+# Save session with UUIDs from all worktrees
 save_cwt_session() {
   local sessions_dir=$(get_sessions_dir "$PROJECT_ROOT")
   local session_file="$sessions_dir/${CWT_SESSION_NAME}.json"
 
   mkdir -p "$sessions_dir"
 
-  # Criar JSON com os session IDs
+  # Create JSON with session IDs
   echo "{" > "$session_file"
   echo "  \"name\": \"$CWT_SESSION_NAME\"," >> "$session_file"
   echo "  \"created\": \"$(date -Iseconds)\"," >> "$session_file"
@@ -92,22 +92,22 @@ save_cwt_session() {
   echo "  }" >> "$session_file"
   echo "}" >> "$session_file"
 
-  echo "💾 Sessão '$CWT_SESSION_NAME' salva em $session_file"
+  echo "💾 Session '$CWT_SESSION_NAME' saved to $session_file"
 }
 
-# Carregar sessão existente
+# Load existing session
 load_cwt_session() {
   local sessions_dir=$(get_sessions_dir "$PROJECT_ROOT")
   local session_file="$sessions_dir/${CWT_SESSION_NAME}.json"
 
   if [[ ! -f "$session_file" ]]; then
-    echo "❌ Sessão '$CWT_SESSION_NAME' não encontrada"
-    echo "   Sessões disponíveis:"
+    echo "❌ Session '$CWT_SESSION_NAME' not found"
+    echo "   Available sessions:"
     ls -1 "$sessions_dir"/*.json 2>/dev/null | xargs -I{} basename {} .json | sed 's/^/     /'
     return 1
   fi
 
-  # Carregar session IDs do JSON para arquivo temporário
+  # Load session IDs from JSON to temporary file
   while IFS=': ' read -r key value; do
     key=$(echo "$key" | tr -d '"' | xargs)
     value=$(echo "$value" | tr -d '",\n' | xargs)
@@ -115,11 +115,11 @@ load_cwt_session() {
       set_session_id "$key" "$value"
   done < <(cat "$session_file")
 
-  echo "📂 Sessão '$CWT_SESSION_NAME' carregada"
+  echo "📂 Session '$CWT_SESSION_NAME' loaded"
   return 0
 }
 
-# Obter ou gerar session ID para um worktree
+# Get or generate session ID for a worktree
 get_session_id() {
   local worker_id="$1"
   local existing_id=$(get_session_id_value "$worker_id")
@@ -133,15 +133,15 @@ get_session_id() {
   fi
 }
 
-# Arquivo temporário para session IDs (compatível com bash 3)
+# Temporary file for session IDs (bash 3 compatible)
 SESSION_IDS_FILE="/tmp/cwt-session-ids-$$.txt"
 touch "$SESSION_IDS_FILE"
 
-# Funções para manipular session IDs sem arrays associativos
+# Functions to manage session IDs without associative arrays
 set_session_id() {
   local key="$1"
   local value="$2"
-  # Remove entrada existente e adiciona nova
+  # Remove existing entry and add new one
   grep -v "^$key=" "$SESSION_IDS_FILE" > "$SESSION_IDS_FILE.tmp" 2>/dev/null || true
   mv "$SESSION_IDS_FILE.tmp" "$SESSION_IDS_FILE"
   echo "$key=$value" >> "$SESSION_IDS_FILE"
@@ -156,17 +156,17 @@ list_session_ids() {
   cat "$SESSION_IDS_FILE" 2>/dev/null
 }
 
-# Usar sessão do ambiente ou padrão
+# Use session from environment or default
 SESSION_NAME="${SESSION_NAME:-cwt}"
 PULSER_INTERVAL=${PULSER_INTERVAL:-120}
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
-# LOG_DIR será definido após detectar PROJECT_ROOT
+# LOG_DIR will be defined after detecting PROJECT_ROOT
 CWT_BIN_DIR="$(cd "$(dirname "$0")" && pwd)"
 CWT_CONFIG_DIR="$(cd "$CWT_BIN_DIR/../config" && pwd)"
 CWT_TEMPLATES_DIR="$(cd "$CWT_BIN_DIR/../templates" && pwd)"
 TMUX_CONF="$CWT_CONFIG_DIR/tmux.conf"
 
-# Detectar se estamos em modo projeto (.cwt/) ou legado (git worktrees)
+# Detect if we are in project mode (.cwt/) or legacy mode (git worktrees)
 PROJECT_ROOT="${CWT_PROJECT_ROOT:-}"
 PROJECT_MODE="legacy"
 
@@ -184,21 +184,21 @@ else
 fi
 
 # ============================================================================
-# FUNÇÕES DE DETECÇÃO - MODO PROJETO
+# DETECTION FUNCTIONS - PROJECT MODE
 # ============================================================================
 
-# Detectar diretório do coordenador
+# Detect coordinator directory
 detect_coordinator_dir() {
-  # 1. Configurado em .cwt/config.json
+  # 1. Configured in .cwt/config.json
   if [[ -f "$PROJECT_ROOT/.cwt/config.json" ]]; then
     local coord=$(jq -r '.coordinator // empty' "$PROJECT_ROOT/.cwt/config.json" 2>/dev/null)
     if [[ -n "$coord" && "$coord" != "null" ]]; then
-      # Caso 1: coordinator é subdiretório (estrutura de projeto)
+      # Case 1: coordinator is a subdirectory (project structure)
       if [[ -d "$PROJECT_ROOT/$coord" ]]; then
         echo "$coord"
         return
       fi
-      # Caso 2: PROJECT_ROOT É o coordinator (cwt init dentro do repo)
+      # Case 2: PROJECT_ROOT IS the coordinator (cwt init inside the repo)
       if [[ "$(basename "$PROJECT_ROOT")" == "$coord" && -d "$PROJECT_ROOT/.git" ]]; then
         echo "."
         return
@@ -206,17 +206,17 @@ detect_coordinator_dir() {
     fi
   fi
 
-  # 2. PROJECT_ROOT é um repo git (cwt init dentro do repo)
+  # 2. PROJECT_ROOT is a git repo (cwt init inside the repo)
   if [[ -d "$PROJECT_ROOT/.git" ]]; then
     echo "."
     return
   fi
 
-  # 3. Primeira pasta com .git/ completo (repo, não worktree)
+  # 3. First folder with full .git/ (repo, not worktree)
   for dir in "$PROJECT_ROOT"/*/; do
     local name=$(basename "$dir")
     [[ "$name" == ".cwt" ]] && continue
-    # .git/ como diretório = repo principal
+    # .git/ as directory = main repo
     if [[ -d "$dir/.git" ]]; then
       echo "$name"
       return
@@ -224,27 +224,27 @@ detect_coordinator_dir() {
   done
 }
 
-# Detectar workers (APENAS worktrees do coordenador, não outros repos)
+# Detect workers (ONLY coordinator worktrees, not other repos)
 detect_workers_project() {
   local coord_dir=$(detect_coordinator_dir)
   local coord_path="$PROJECT_ROOT/$coord_dir"
 
-  # Se não tem coordenador, não há workers
+  # If there's no coordinator, there are no workers
   [[ -z "$coord_dir" || ! -d "$coord_path" ]] && return
 
-  # Determinar área de busca para worktrees
+  # Determine search area for worktrees
   local search_area="$PROJECT_ROOT"
-  # Se PROJECT_ROOT é o próprio repo, worktrees estão no parent
+  # If PROJECT_ROOT is the repo itself, worktrees are in the parent
   if [[ -d "$PROJECT_ROOT/.git" ]]; then
     search_area=$(dirname "$PROJECT_ROOT")
   fi
 
-  # Listar worktrees do coordenador
+  # List coordinator worktrees
   git -C "$coord_path" worktree list --porcelain 2>/dev/null | grep "^worktree " | cut -d' ' -f2- | while read -r wt_path; do
-    # Pular o próprio coordenador
+    # Skip the coordinator itself
     [[ "$wt_path" == "$coord_path" ]] && continue
 
-    # Verificar se está na área de busca
+    # Check if it's in the search area
     if [[ "$wt_path" == "$search_area"/* ]]; then
       basename "$wt_path"
     fi
@@ -252,12 +252,12 @@ detect_workers_project() {
 }
 
 # ============================================================================
-# FUNÇÕES DE DETECÇÃO - MODO LEGADO (git worktrees)
+# DETECTION FUNCTIONS - LEGACY MODE (git worktrees)
 # ============================================================================
 
 detect_workers_legacy() {
   if ! git -C "$PROJECT_DIR" rev-parse --git-dir &>/dev/null; then
-    echo "Erro: Não está em um repositório git" >&2
+    echo "Error: Not in a git repository" >&2
     return 1
   fi
 
@@ -271,16 +271,16 @@ detect_workers_legacy() {
 }
 
 # ============================================================================
-# SETUP DE TEMPLATES E PROMPTS INICIAIS
+# TEMPLATE SETUP AND INITIAL PROMPTS
 # ============================================================================
 
-# Instalar CLAUDE.md se não existir
+# Install CLAUDE.md if it doesn't exist
 install_claude_md() {
   local target_dir="$1"
-  local role="$2"  # "coordinator" ou "worker"
+  local role="$2"  # "coordinator" or "worker"
   local worker_id="$3"
 
-  # Se já existe CLAUDE.md, não sobrescrever
+  # If CLAUDE.md already exists, don't overwrite
   [[ -f "$target_dir/CLAUDE.md" ]] && return 0
 
   local template=""
@@ -291,29 +291,29 @@ install_claude_md() {
   fi
 
   if [[ -f "$template" ]]; then
-    # Copiar e substituir WORKER_ID
+    # Copy and replace WORKER_ID
     sed "s/WORKER_ID/$worker_id/g" "$template" > "$target_dir/CLAUDE.md"
     echo "   📄 CLAUDE.md instalado em $target_dir"
   fi
 }
 
-# Instalar settings.json com permissões e MCP config
+# Install settings.json with permissions and MCP config
 install_settings() {
   local target_dir="$1"
-  local role="$2"  # "coordinator" ou "worker"
+  local role="$2"  # "coordinator" or "worker"
   local worker_id="$3"
   local project_root="$4"
 
   local claude_dir="$target_dir/.claude"
   local settings_file="$claude_dir/settings.json"
 
-  # Criar diretório .claude se não existir
+  # Create .claude directory if it doesn't exist
   mkdir -p "$claude_dir"
 
-  # Se já existe, não sobrescrever
+  # If it already exists, don't overwrite
   [[ -f "$settings_file" ]] && return 0
 
-  # Escolher template
+  # Choose template
   local template=""
   if [[ "$role" == "coordinator" ]]; then
     template="$CWT_TEMPLATES_DIR/settings.coord.json"
@@ -322,36 +322,36 @@ install_settings() {
   fi
 
   if [[ -f "$template" ]]; then
-    # Substituir placeholders:
+    # Replace placeholders:
     # - WORKER_NAME -> worker_id
-    # - CWT_ROOT_PLACEHOLDER -> project_root (path real)
-    # - ~ -> $HOME (expandir para path absoluto)
+    # - CWT_ROOT_PLACEHOLDER -> project_root (real path)
+    # - ~ -> $HOME (expand to absolute path)
     local install_dir="$HOME/.claude-worktrees"
     sed -e "s/WORKER_NAME/$worker_id/g" \
         -e "s|CWT_ROOT_PLACEHOLDER|$project_root|g" \
         -e "s|~/.claude-worktrees|$install_dir|g" \
         "$template" > "$settings_file"
-    echo "   ⚙️  settings.json instalado"
+    echo "   ⚙️  settings.json installed"
   else
-    echo "   ⚠️  Template não encontrado: $template"
+    echo "   ⚠️  Template not found: $template"
   fi
 }
 
-# Instalar skills
+# Install skills
 install_skills() {
   local target_dir="$1"
-  local role="$2"  # "coordinator" ou "worker"
+  local role="$2"  # "coordinator" or "worker"
 
   local claude_dir="$target_dir/.claude"
   local skills_dir="$claude_dir/skills"
   local install_dir="$HOME/.claude-worktrees"
 
-  # Se não há skills no install, pular
+  # If there are no skills in install, skip
   [[ ! -d "$install_dir/templates/skills" ]] && return 0
 
   mkdir -p "$skills_dir"
 
-  # Copiar skills relevantes
+  # Copy relevant skills
   local skills_to_copy=("cwt-kb" "cwt-budget")
   if [[ "$role" == "coordinator" ]]; then
     skills_to_copy+=("cwt-coordinator")
@@ -366,7 +366,7 @@ install_skills() {
   done
 }
 
-# Gerar prompt inicial para o coordenador
+# Generate initial prompt for the coordinator
 get_coordinator_prompt() {
   local workers_list="$1"
   cat << EOF
@@ -393,7 +393,7 @@ Waiting for instructions.
 EOF
 }
 
-# Gerar prompt de lembrete para coordinator (--continue)
+# Generate reminder prompt for coordinator (--continue)
 get_coordinator_continue_prompt() {
   local workers_list="$1"
   cat << EOF
@@ -407,7 +407,7 @@ FIRST: Check messages and worker status:
 EOF
 }
 
-# Gerar prompt para modo SOLO (coordinator faz tudo)
+# Generate prompt for SOLO mode (coordinator does everything)
 get_solo_prompt() {
   cat << EOF
 SOLO MODE - You are working alone (no workers).
@@ -418,7 +418,7 @@ Waiting for instructions.
 EOF
 }
 
-# Gerar prompt para modo SOLO com continue
+# Generate prompt for SOLO mode with continue
 get_solo_continue_prompt() {
   cat << EOF
 [SESSION RESUMED] SOLO MODE - working alone.
@@ -427,7 +427,7 @@ Continue your work.
 EOF
 }
 
-# Gerar prompt inicial para worker
+# Generate initial prompt for worker
 get_worker_prompt() {
   local worker_id="$1"
   cat << EOF
@@ -444,7 +444,7 @@ Waiting for tasks from coordinator...
 EOF
 }
 
-# Gerar prompt de lembrete para worker (--continue)
+# Generate reminder prompt for worker (--continue)
 get_worker_continue_prompt() {
   local worker_id="$1"
   cat << EOF
@@ -455,35 +455,35 @@ EOF
 }
 
 # ============================================================================
-# FUNÇÕES DE ESPERA
+# WAIT FUNCTIONS
 # ============================================================================
 
-# Aguardar Claude estar pronto (detectar prompt ">")
+# Wait for Claude to be ready (detect ">" prompt)
 wait_for_claude() {
   local session="$1"
   local window="$2"
-  local max_attempts="${3:-90}"  # 90 tentativas = ~45 segundos
+  local max_attempts="${3:-90}"  # 90 attempts = ~45 seconds
   local attempt=0
   local saw_loading=0
 
   while [[ $attempt -lt $max_attempts ]]; do
-    # Capturar últimas linhas do pane
+    # Capture last lines from pane
     local output=$(tmux capture-pane -t "$session:$window" -p -S -10 2>/dev/null)
 
-    # Claude pronto: mostra "❯" prompt ou "bypass permissions" ou ">"
+    # Claude ready: shows "❯" prompt or "bypass permissions" or ">"
     if echo "$output" | grep -qE "(^>|❯|bypass permissions)" 2>/dev/null; then
-      return 0  # Claude pronto para input
+      return 0  # Claude ready for input
     fi
 
-    # Se Claude está carregando, marcar e continuar esperando
+    # If Claude is loading, mark and keep waiting
     if echo "$output" | grep -qE "(Loading|Resuming|⠋|⠙|⠹|⠸|⠼|⠴|⠦|⠧|⠇|⠏)" 2>/dev/null; then
       saw_loading=1
     fi
 
-    # Se voltou ao shell (% prompt) após mostrar sinais de Claude, falhou
+    # If returned to shell (% prompt) after showing Claude signs, it failed
     if echo "$output" | grep -qE "^[^>]*%[[:space:]]*$" 2>/dev/null; then
       if [[ $saw_loading -eq 1 ]] || echo "$output" | grep -qE "(No conversation|Error|failed)" 2>/dev/null; then
-        return 1  # Claude falhou
+        return 1  # Claude failed
       fi
     fi
 
@@ -495,7 +495,7 @@ wait_for_claude() {
 }
 
 # ============================================================================
-# INICIALIZAÇÃO
+# INITIALIZATION
 # ============================================================================
 
 echo "═══════════════════════════════════════════════════════════════"
@@ -507,16 +507,16 @@ echo " Session: $SESSION_NAME"
 [[ -n "$SOLO_MODE" ]] && echo " Mode: SOLO (coordinator only)"
 [[ -n "$STRICT_MODE" ]] && echo " Mode: STRICT (coordinator read-only)"
 
-# Determinar workers
+# Determine workers
 if [[ -n "$SOLO_MODE" ]]; then
-  # Modo solo: sem workers
+  # Solo mode: no workers
   WORKSPACES=()
   echo ""
-  echo "🎯 Modo SOLO: trabalhando apenas com coordinator"
+  echo "🎯 SOLO mode: working with coordinator only"
 elif [[ $# -gt 0 ]]; then
   WORKSPACES=("$@")
 elif [[ "$PROJECT_MODE" == "project" ]]; then
-  # Alternativa compatível com bash 3.x (macOS default)
+  # Alternative compatible with bash 3.x (macOS default)
   WORKSPACES=()
   while IFS= read -r line; do
     [[ -n "$line" ]] && WORKSPACES+=("$line")
@@ -530,17 +530,17 @@ fi
 
 if [[ ${#WORKSPACES[@]} -eq 0 && -z "$SOLO_MODE" ]]; then
   echo ""
-  echo "ℹ️  Nenhum worker encontrado - iniciando só com coordinator"
-  echo "   Para criar workers depois: wt-init worker1 worker2"
+  echo "ℹ️  No workers found - starting with coordinator only"
+  echo "   To create workers later: wt-init worker1 worker2"
 fi
 
-# Determinar diretório do coordenador
+# Determine coordinator directory
 if [[ "$PROJECT_MODE" == "project" ]]; then
   COORD_DIR_NAME=$(detect_coordinator_dir)
   COORD_DIR="$PROJECT_ROOT/$COORD_DIR_NAME"
   if [[ ! -d "$COORD_DIR" ]]; then
-    echo "⚠️  Diretório do coordenador não encontrado: $COORD_DIR_NAME"
-    echo "   Clone o repo principal: git clone <url> main"
+    echo "⚠️  Coordinator directory not found: $COORD_DIR_NAME"
+    echo "   Clone the main repo: git clone <url> main"
     exit 1
   fi
 else
@@ -564,33 +564,33 @@ if [[ -x "$WT_BRANCH" ]]; then
   echo ""
 fi
 
-# Verificar se sessão já existe
+# Check if session already exists
 if tmux has-session -t "=$SESSION_NAME" 2>/dev/null; then
-  echo "⚠️  Sessão '$SESSION_NAME' já existe."
-  echo "   Usar: tmux attach -t =$SESSION_NAME  (para reconectar)"
-  echo "   Usar: tmux kill-session -t =$SESSION_NAME  (para encerrar)"
+  echo "⚠️  Session '$SESSION_NAME' already exists."
+  echo "   Use: tmux attach -t =$SESSION_NAME  (to reconnect)"
+  echo "   Use: tmux kill-session -t =$SESSION_NAME  (to kill)"
   exit 1
 fi
 
-# Salvar lista de workspaces
+# Save workspaces list
 mkdir -p "$(dirname "$WORKSPACES_FILE")"
 printf '%s\n' "${WORKSPACES[@]}" > "$WORKSPACES_FILE"
 
-# Inicializar state se necessário
+# Initialize state if needed
 if [[ ! -f "$STATE_FILE" ]]; then
   mkdir -p "$(dirname "$STATE_FILE")"
   echo '{"workers":{},"messages":[]}' > "$STATE_FILE"
 fi
 
-# Criar diretório de logs
+# Create log directory
 mkdir -p "$LOG_DIR"
 echo "📝 Logs: $LOG_DIR/cwt-*-$TIMESTAMP.log"
 
-# Criar diretório de histórico (isola HISTFILE por worker)
+# Create history directory (isolates HISTFILE per worker)
 mkdir -p "$PROJECT_ROOT/.cwt/history"
 
 # ============================================================================
-# INICIAR DAEMON DE COMUNICAÇÃO
+# START COMMUNICATION DAEMON
 # ============================================================================
 
 CWT_DAEMON_DIR="$(cd "$CWT_BIN_DIR/../daemon" && pwd)"
@@ -598,49 +598,49 @@ DAEMON_LOG="$LOG_DIR/cwt-daemon-$TIMESTAMP.log"
 DAEMON_PID_FILE="$PROJECT_ROOT/.cwt/daemon.pid"
 CWT_SOCKET="$PROJECT_ROOT/.cwt/cwt.sock"
 
-# Parar daemon anterior se existir
+# Stop previous daemon if it exists
 if [[ -f "$DAEMON_PID_FILE" ]]; then
   OLD_PID=$(cat "$DAEMON_PID_FILE" 2>/dev/null)
   if [[ -n "$OLD_PID" ]] && kill -0 "$OLD_PID" 2>/dev/null; then
-    echo "🔄 Parando daemon anterior (PID: $OLD_PID)..."
+    echo "🔄 Stopping previous daemon (PID: $OLD_PID)..."
     kill "$OLD_PID" 2>/dev/null
     sleep 1
   fi
   rm -f "$DAEMON_PID_FILE"
 fi
 
-# Remover socket antigo
+# Remove old socket
 rm -f "$CWT_SOCKET"
 
-# Iniciar daemon
+# Start daemon
 if [[ -f "$CWT_DAEMON_DIR/index.js" ]] && command -v node &>/dev/null; then
-  echo "🚀 Iniciando daemon de comunicação..."
+  echo "🚀 Starting communication daemon..."
   nohup node "$CWT_DAEMON_DIR/index.js" "$PROJECT_ROOT" > "$DAEMON_LOG" 2>&1 &
   DAEMON_PID=$!
   sleep 1
 
-  # Verificar se iniciou corretamente
+  # Check if it started correctly
   if kill -0 "$DAEMON_PID" 2>/dev/null && [[ -S "$CWT_SOCKET" ]]; then
-    echo "   ✅ Daemon rodando (PID: $DAEMON_PID)"
+    echo "   ✅ Daemon running (PID: $DAEMON_PID)"
     echo "   📡 Socket: $CWT_SOCKET"
   else
-    echo "   ⚠️  Daemon pode não ter iniciado corretamente"
+    echo "   ⚠️  Daemon may not have started correctly"
     echo "   📄 Log: $DAEMON_LOG"
   fi
 else
-  echo "⚠️  Daemon não disponível (node não encontrado ou daemon/index.js ausente)"
-  echo "   Comunicação em tempo real desabilitada"
+  echo "⚠️  Daemon not available (node not found or daemon/index.js missing)"
+  echo "   Real-time communication disabled"
 fi
 
-# Exportar variáveis para os workers
+# Export variables for workers
 export CWT_SOCKET
 export CWT_PROJECT_ROOT="$PROJECT_ROOT"
 
 # ============================================================================
-# CRIAR SESSÃO TMUX
+# CREATE TMUX SESSION
 # ============================================================================
 
-echo "📺 Criando sessão tmux..."
+echo "📺 Creating tmux session..."
 if [[ -f "$TMUX_CONF" ]]; then
   tmux -f "$TMUX_CONF" new-session -d -s "$SESSION_NAME" -n "coordinator"
 else
@@ -648,10 +648,10 @@ else
 fi
 sleep 0.3
 
-# Habilitar logging para coordinator
+# Enable logging for coordinator
 tmux pipe-pane -t "$SESSION_NAME:0" -o "cat >> '$LOG_DIR/cwt-coordinator-$TIMESTAMP.log'"
 
-# Verificar branch do coordenador
+# Check coordinator branch
 CURRENT_BRANCH=$(git -C "$COORD_DIR" branch --show-current 2>/dev/null || echo 'unknown')
 
 echo ""
@@ -659,9 +659,9 @@ echo "📋 Layout:"
 echo "   0: coordinator ($COORD_DIR_NAME) - $CURRENT_BRANCH"
 
 # Window 0: Coordinator
-echo "🎯 Configurando coordinator..."
+echo "🎯 Configuring coordinator..."
 
-# Instalar CLAUDE.md, settings.json e skills
+# Install CLAUDE.md, settings.json and skills
 install_claude_md "$COORD_DIR" "coordinator" "coordinator"
 install_settings "$COORD_DIR" "coordinator" "coordinator" "$PROJECT_ROOT"
 install_skills "$COORD_DIR" "coordinator"
@@ -678,19 +678,19 @@ tmux send-keys -t "$SESSION_NAME:0" "cd '$COORD_DIR'" Enter
 sleep 0.2
 tmux send-keys -t "$SESSION_NAME:0" "echo '🎯 COORDINATOR - $COORD_DIR_NAME ($CURRENT_BRANCH)'" Enter
 sleep 0.2
-# Determinar flags do Claude
+# Determine Claude flags
 CLAUDE_FLAGS="${SKIP_PERMISSIONS:+--dangerously-skip-permissions}"
 
-# Session management com UUIDs
+# Session management with UUIDs
 if [[ -n "$CWT_SESSION_NAME" ]]; then
-  # Carregar sessão existente se --resume
+  # Load existing session if --resume
   if [[ "$CONTINUE_FLAG" == "--resume" ]]; then
     if ! load_cwt_session; then
-      echo "   ⚠️  Sessão não encontrada, criando nova..."
+      echo "   ⚠️  Session not found, creating new one..."
     fi
   fi
 
-  # Obter session ID para coordinator
+  # Get session ID for coordinator
   COORD_SESSION_ID=$(get_session_id "coordinator")
   CLAUDE_FLAGS="$CLAUDE_FLAGS --session-id $COORD_SESSION_ID"
   echo "   🔑 Session ID (coordinator): ${COORD_SESSION_ID:0:8}..."
@@ -700,15 +700,15 @@ fi
 
 tmux send-keys -t "$SESSION_NAME:0" "claude $CLAUDE_FLAGS" Enter
 
-# Criar window para cada worker
+# Create window for each worker
 WINDOW_NUM=1
 WORKER_WINDOWS=()
 for workspace in "${WORKSPACES[@]}"; do
-  # Determinar diretório do worker
+  # Determine worker directory
   if [[ "$PROJECT_MODE" == "project" ]]; then
     WORKSPACE_DIR="$PROJECT_ROOT/$workspace"
   else
-    # Modo legado: buscar worktree
+    # Legacy mode: search for worktree
     WORKSPACE_DIR=""
     while IFS= read -r wt; do
       wt_name=$(basename "$wt" | sed 's/^workspace-//')
@@ -722,7 +722,7 @@ for workspace in "${WORKSPACES[@]}"; do
   fi
 
   if [[ ! -d "$WORKSPACE_DIR" ]]; then
-    echo "   ⚠️  $WINDOW_NUM: $workspace (NÃO ENCONTRADO)"
+    echo "   ⚠️  $WINDOW_NUM: $workspace (NOT FOUND)"
     ((WINDOW_NUM++))
     continue
   fi
@@ -731,19 +731,19 @@ for workspace in "${WORKSPACES[@]}"; do
   wt_branch=$(git -C "$WORKSPACE_DIR" branch --show-current 2>/dev/null || echo '?')
   echo "   $WINDOW_NUM: $workspace - $wt_branch"
 
-  # Instalar CLAUDE.md, settings.json e skills
+  # Install CLAUDE.md, settings.json and skills
   install_claude_md "$WORKSPACE_DIR" "worker" "$workspace"
   install_settings "$WORKSPACE_DIR" "worker" "$workspace" "$PROJECT_ROOT"
   install_skills "$WORKSPACE_DIR" "worker"
 
-  # Criar window
+  # Create window
   tmux new-window -t "$SESSION_NAME" -n "$workspace"
   sleep 0.3
 
   # Logging
   tmux pipe-pane -t "$SESSION_NAME:$WINDOW_NUM" -o "cat >> '$LOG_DIR/cwt-$workspace-$TIMESTAMP.log'"
 
-  # Configurar
+  # Configure
   tmux send-keys -t "$SESSION_NAME:$WINDOW_NUM" "export CLAUDE_WORKER_ID='$workspace'" Enter
   sleep 0.2
   tmux send-keys -t "$SESSION_NAME:$WINDOW_NUM" "export CWT_PROJECT_ROOT='$PROJECT_ROOT'" Enter
@@ -755,7 +755,7 @@ for workspace in "${WORKSPACES[@]}"; do
   tmux send-keys -t "$SESSION_NAME:$WINDOW_NUM" "cd '$WORKSPACE_DIR'" Enter
   sleep 0.2
 
-  # Determinar flags do worker
+  # Determine worker flags
   WORKER_FLAGS="${SKIP_PERMISSIONS:+--dangerously-skip-permissions}"
   if [[ -n "$CWT_SESSION_NAME" ]]; then
     WORKER_SESSION_ID=$(get_session_id "$workspace")
@@ -767,19 +767,19 @@ for workspace in "${WORKSPACES[@]}"; do
 
   tmux send-keys -t "$SESSION_NAME:$WINDOW_NUM" "claude $WORKER_FLAGS" Enter
 
-  # Guardar info para enviar prompt depois
+  # Save info to send prompt later
   WORKER_WINDOWS+=("$WINDOW_NUM:$workspace")
 
   ((WINDOW_NUM++))
 done
 
-# Enviar prompts iniciais para coordinator e workers (após todos iniciarem)
-echo "⏳ Aguardando Claude iniciar..."
+# Send initial prompts to coordinator and workers (after all have started)
+echo "⏳ Waiting for Claude to start..."
 
-# Aguardar e enviar prompt para coordinator
-echo "   ⏳ Aguardando coordinator..."
+# Wait and send prompt to coordinator
+echo "   ⏳ Waiting for coordinator..."
 if wait_for_claude "$SESSION_NAME" 0; then
-  # Escolher prompt baseado no modo
+  # Choose prompt based on mode
   if [[ -n "$SOLO_MODE" ]]; then
     if [[ -n "$CONTINUE_FLAG" ]]; then
       COORD_PROMPT=$(get_solo_continue_prompt)
@@ -794,11 +794,11 @@ if wait_for_claude "$SESSION_NAME" 0; then
   tmux send-keys -t "$SESSION_NAME:0" "$COORD_PROMPT"
   sleep 0.1
   tmux send-keys -t "$SESSION_NAME:0" "" C-m
-  echo "   ✅ Coordinator pronto"
+  echo "   ✅ Coordinator ready"
 else
-  # Se --continue falhou, reiniciar sem a flag
+  # If --continue failed, restart without the flag
   if [[ -n "$CONTINUE_FLAG" ]]; then
-    echo "   ⚠️  Coordinator: --continue falhou, reiniciando..."
+    echo "   ⚠️  Coordinator: --continue failed, restarting..."
     tmux send-keys -t "$SESSION_NAME:0" "claude ${SKIP_PERMISSIONS:+--dangerously-skip-permissions}" Enter
     if wait_for_claude "$SESSION_NAME" 0; then
       if [[ -n "$SOLO_MODE" ]]; then
@@ -809,22 +809,22 @@ else
       tmux send-keys -t "$SESSION_NAME:0" "$COORD_PROMPT"
       sleep 0.1
       tmux send-keys -t "$SESSION_NAME:0" "" C-m
-      echo "   ✅ Coordinator pronto (fallback)"
+      echo "   ✅ Coordinator ready (fallback)"
     else
-      echo "   ⚠️  Coordinator: Claude não iniciou (verifique a window 0)"
+      echo "   ⚠️  Coordinator: Claude did not start (check window 0)"
     fi
   else
-    echo "   ⚠️  Coordinator: Claude não iniciou (verifique a window 0)"
+    echo "   ⚠️  Coordinator: Claude did not start (check window 0)"
   fi
 fi
 
-# Aguardar e enviar prompts para workers
+# Wait and send prompts to workers
 for worker_info in "${WORKER_WINDOWS[@]}"; do
   win_num="${worker_info%%:*}"
   worker_id="${worker_info#*:}"
-  echo "   ⏳ Aguardando $worker_id..."
+  echo "   ⏳ Waiting for $worker_id..."
   if wait_for_claude "$SESSION_NAME" "$win_num"; then
-    # Sempre enviar prompt - completo ou resumido
+    # Always send prompt - full or summarized
     if [[ -n "$CONTINUE_FLAG" ]]; then
       WORKER_PROMPT=$(get_worker_continue_prompt "$worker_id")
     else
@@ -833,28 +833,28 @@ for worker_info in "${WORKER_WINDOWS[@]}"; do
     tmux send-keys -t "$SESSION_NAME:$win_num" "$WORKER_PROMPT"
     sleep 0.1
     tmux send-keys -t "$SESSION_NAME:$win_num" "" C-m
-    echo "   ✅ $worker_id pronto"
+    echo "   ✅ $worker_id ready"
   else
-    # Se --continue falhou, reiniciar sem a flag
+    # If --continue failed, restart without the flag
     if [[ -n "$CONTINUE_FLAG" ]]; then
-      echo "   ⚠️  $worker_id: --continue falhou, reiniciando..."
+      echo "   ⚠️  $worker_id: --continue failed, restarting..."
       tmux send-keys -t "$SESSION_NAME:$win_num" "claude ${SKIP_PERMISSIONS:+--dangerously-skip-permissions}" Enter
       if wait_for_claude "$SESSION_NAME" "$win_num"; then
         WORKER_PROMPT=$(get_worker_prompt "$worker_id")
         tmux send-keys -t "$SESSION_NAME:$win_num" "$WORKER_PROMPT"
         sleep 0.1
         tmux send-keys -t "$SESSION_NAME:$win_num" "" C-m
-        echo "   ✅ $worker_id pronto (fallback)"
+        echo "   ✅ $worker_id ready (fallback)"
       else
-        echo "   ⚠️  $worker_id: Claude não iniciou (verifique a window $win_num)"
+        echo "   ⚠️  $worker_id: Claude did not start (check window $win_num)"
       fi
     else
-      echo "   ⚠️  $worker_id: Claude não iniciou (verifique a window $win_num)"
+      echo "   ⚠️  $worker_id: Claude did not start (check window $win_num)"
     fi
   fi
 done
 
-# Salvar sessão CWT se usando sessões nomeadas
+# Save CWT session if using named sessions
 if [[ -n "$CWT_SESSION_NAME" ]]; then
   save_cwt_session
 fi
@@ -866,14 +866,14 @@ sleep 0.2
 tmux send-keys -t "$SESSION_NAME:$WINDOW_NUM" "cd '$COORD_DIR' && echo '📊 Monitor - $SESSION_NAME'" Enter
 
 # ============================================================================
-# INICIAR PULSER (monitor de atividade)
+# START PULSER (activity monitor)
 # ============================================================================
 
 PULSER_SCRIPT="$CWT_BIN_DIR/tmux-pulser.sh"
 PULSER_LOG="$LOG_DIR/cwt-pulser-$TIMESTAMP.log"
 PULSER_PID_FILE="$PROJECT_ROOT/.cwt/pulser.pid"
 
-# Parar pulser anterior se existir
+# Stop previous pulser if it exists
 if [[ -f "$PULSER_PID_FILE" ]]; then
   OLD_PID=$(cat "$PULSER_PID_FILE" 2>/dev/null)
   if [[ -n "$OLD_PID" ]] && kill -0 "$OLD_PID" 2>/dev/null; then
@@ -882,10 +882,10 @@ if [[ -f "$PULSER_PID_FILE" ]]; then
   rm -f "$PULSER_PID_FILE"
 fi
 
-# Iniciar pulser em background
+# Start pulser in background
 if [[ -f "$PULSER_SCRIPT" ]]; then
   echo ""
-  echo "🔄 Iniciando pulser..."
+  echo "🔄 Starting pulser..."
   SESSION_NAME="$SESSION_NAME" CWT_PROJECT_ROOT="$PROJECT_ROOT" \
     nohup "$PULSER_SCRIPT" >> "$PULSER_LOG" 2>&1 &
   echo $! > "$PULSER_PID_FILE"
@@ -896,18 +896,18 @@ if [[ -f "$PULSER_SCRIPT" ]]; then
 fi
 
 echo ""
-echo "✅ Ambiente criado!"
+echo "✅ Environment created!"
 echo ""
-echo "📋 Atalhos tmux (Ctrl+b é o prefix):"
-echo "   Ctrl+b n    Próxima window"
-echo "   Ctrl+b p    Window anterior"
-echo "   Ctrl+b 0-9  Ir para window N"
-echo "   Ctrl+b d    Desconectar"
+echo "📋 Tmux shortcuts (Ctrl+b is the prefix):"
+echo "   Ctrl+b n    Next window"
+echo "   Ctrl+b p    Previous window"
+echo "   Ctrl+b 0-9  Go to window N"
+echo "   Ctrl+b d    Detach"
 echo ""
 
-# Selecionar window do coordinator antes de conectar
+# Select coordinator window before connecting
 tmux select-window -t "$SESSION_NAME:0"
 
-# Conectar
+# Connect
 sleep 0.5
 exec tmux attach -t "$SESSION_NAME"

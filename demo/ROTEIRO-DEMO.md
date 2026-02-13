@@ -1,39 +1,39 @@
-# Roteiro de Demo - CWT (Claude Worktrees)
+# Demo Script - CWT (Claude Worktrees)
 
-**Duração estimada:** 5-7 minutos
+**Estimated duration:** 5-7 minutes
 
 ---
 
-## Preparação (antes de gravar)
+## Preparation (before recording)
 
 ```bash
-# Limpar ambiente anterior
+# Clean previous environment
 cd /tmp && rm -rf cwt-demo
 tmux kill-session -t cwt-my-project 2>/dev/null
 
-# Ter um repo para clonar (ex: expressjs/express ou seu próprio)
+# Have a repo to clone (e.g.: expressjs/express or your own)
 ```
 
 ---
 
-## PARTE 1: Setup Inicial (1 min)
+## PART 1: Initial Setup (1 min)
 
-### 1.1 Criar projeto
+### 1.1 Create project
 
 ```bash
 cd /tmp
 mkdir cwt-demo && cd cwt-demo
 
-# Clonar um repo de exemplo
+# Clone an example repo
 git clone https://github.com/expressjs/express.git main --depth 1
 
-# Inicializar CWT
+# Initialize CWT
 cwt init --repo main --name my-project
 ```
 
-**Narração:** "CWT cria uma estrutura de projeto com configuração isolada em .cwt/"
+**Narration:** "CWT creates a project structure with isolated configuration in .cwt/"
 
-### 1.2 Mostrar estrutura
+### 1.2 Show structure
 
 ```bash
 ls -la
@@ -42,17 +42,17 @@ cat .cwt/config.json
 
 ---
 
-## PARTE 2: Criar Workers (1 min)
+## PART 2: Create Workers (1 min)
 
-### 2.1 Criar worktrees
+### 2.1 Create worktrees
 
 ```bash
 wt-init backend frontend
 ```
 
-**Narração:** "Cada worker recebe seu próprio diretório e branch isolados"
+**Narration:** "Each worker gets its own isolated directory and branch"
 
-### 2.2 Mostrar resultado
+### 2.2 Show result
 
 ```bash
 ls -la
@@ -61,129 +61,129 @@ git -C main worktree list
 
 ---
 
-## PARTE 3: Iniciar Sessão Multi-Agente (1 min)
+## PART 3: Start Multi-Agent Session (1 min)
 
-### 3.1 Iniciar CWT
+### 3.1 Start CWT
 
 ```bash
 cwt
 ```
 
-**Narração:** "CWT inicia uma sessão tmux com coordinator e workers em janelas separadas"
+**Narration:** "CWT starts a tmux session with coordinator and workers in separate windows"
 
-### 3.2 Navegar entre janelas
+### 3.2 Navigate between windows
 
 - `Ctrl+B 0` - Coordinator
 - `Ctrl+B 1` - Backend worker
 - `Ctrl+B 2` - Frontend worker
 
-**Narração:** "Cada agente Claude trabalha de forma independente em seu workspace"
+**Narration:** "Each Claude agent works independently in its workspace"
 
 ---
 
-## PARTE 4: Comunicação entre Agentes (1 min)
+## PART 4: Communication Between Agents (1 min)
 
-### 4.1 Enviar tarefa (do coordinator)
+### 4.1 Send task (from coordinator)
 
 ```bash
-wt-task backend "Criar endpoint GET /api/users"
-wt-task frontend "Criar componente UserList"
+wt-task backend "Create endpoint GET /api/users"
+wt-task frontend "Create UserList component"
 ```
 
-### 4.2 Ver status de mensagens
+### 4.2 View message status
 
 ```bash
 wt-msg status
 ```
 
-### 4.3 Worker responde (mudar para janela do worker)
+### 4.3 Worker responds (switch to worker window)
 
 ```bash
-# Ctrl+B 1 (ir para backend)
+# Ctrl+B 1 (go to backend)
 wt-msg read
-wt-msg send coordinator "Endpoint criado em routes/users.js"
+wt-msg send coordinator "Endpoint created in routes/users.js"
 ```
 
 ---
 
-## PARTE 5: Knowledge Base (30s)
+## PART 5: Knowledge Base (30s)
 
-### 5.1 Consultar padrões
+### 5.1 Query patterns
 
 ```bash
 wt-kb query "error handling"
 wt-kb list
 ```
 
-**Narração:** "Workers consultam a base de conhecimento antes de perguntar ao coordinator"
+**Narration:** "Workers consult the knowledge base before asking the coordinator"
 
 ---
 
-## PARTE 6: Budget Control (30s)
+## PART 6: Budget Control (30s)
 
-### 6.1 Configurar limite
+### 6.1 Configure limit
 
 ```bash
 cwt budget --limit 10 --period daily
 ```
 
-### 6.2 Ver status
+### 6.2 View status
 
 ```bash
 wt-billing
 ```
 
-**Narração:** "Controle de gastos por projeto com limites configuráveis"
+**Narration:** "Per-project cost control with configurable limits"
 
 ---
 
-## PARTE 7: Help & Settings (30s)
+## PART 7: Help & Settings (30s)
 
-### 7.1 Abrir popup de ajuda
+### 7.1 Open help popup
 
-- Pressionar `Ctrl+B ?`
+- Press `Ctrl+B ?`
 
-**Narração:** "O popup mostra atalhos, status do budget e permite configuração"
+**Narration:** "The popup shows shortcuts, budget status and allows configuration"
 
-- Pressionar `q` para fechar
+- Press `q` to close
 
 ---
 
-## PARTE 8: Segurança (30s)
+## PART 8: Security (30s)
 
-### 8.1 Mostrar que worker não pode fazer push
+### 8.1 Show that worker cannot push
 
 ```bash
-# Na janela do worker
+# In the worker window
 git push
-# Vai ser bloqueado pelo bash-validator
+# Will be blocked by bash-validator
 ```
 
-**Narração:** "Workers são impedidos de operações destrutivas - apenas o coordinator pode fazer push, merge e deploy"
+**Narration:** "Workers are prevented from destructive operations - only the coordinator can push, merge and deploy"
 
 ---
 
-## PARTE 9: Encerrar (15s)
+## PART 9: Wrap Up (15s)
 
-### 9.1 Detach da sessão
+### 9.1 Detach from session
 
 - `Ctrl+B d`
 
-**Narração:** "A sessão continua rodando em background"
+**Narration:** "The session continues running in the background"
 
-### 9.2 Mostrar que sessão existe
+### 9.2 Show that session exists
 
 ```bash
 cwt --list
 ```
 
-### 9.3 Reconectar
+### 9.3 Reconnect
 
 ```bash
 cwt
 ```
 
-### 9.4 Encerrar de vez
+### 9.4 Terminate
 
 ```bash
 cwt --kill
@@ -191,31 +191,31 @@ cwt --kill
 
 ---
 
-## Pontos-Chave para Enfatizar
+## Key Points to Emphasize
 
-1. **Isolamento** - Cada worker tem seu próprio diretório e branch
-2. **Coordenação** - Comunicação estruturada via mensagens
-3. **Segurança** - Hooks previnem operações perigosas
-4. **Budget** - Controle de custos em tempo real
-5. **Knowledge Base** - Padrões compartilhados entre agentes
-6. **Skills** - Claude já sabe seu papel (coordinator/worker)
+1. **Isolation** - Each worker has its own directory and branch
+2. **Coordination** - Structured communication via messages
+3. **Security** - Hooks prevent dangerous operations
+4. **Budget** - Real-time cost control
+5. **Knowledge Base** - Shared patterns between agents
+6. **Skills** - Claude already knows its role (coordinator/worker)
 
 ---
 
-## Comandos Rápidos de Referência
+## Quick Reference Commands
 
-| Comando | Descrição |
-|---------|-----------|
-| `cwt init --repo X --name Y` | Inicializar projeto |
-| `wt-init worker1 worker2` | Criar worktrees |
-| `cwt` | Iniciar/reconectar sessão |
-| `cwt --solo` | Apenas coordinator |
-| `cwt --kill` | Encerrar sessão |
-| `wt-task worker "msg"` | Enviar tarefa |
-| `wt-msg send to "msg"` | Enviar mensagem |
-| `wt-msg status` | Ver mensagens |
-| `wt-kb query "X"` | Buscar na KB |
-| `cwt budget --limit X` | Definir limite |
+| Command | Description |
+|---------|-------------|
+| `cwt init --repo X --name Y` | Initialize project |
+| `wt-init worker1 worker2` | Create worktrees |
+| `cwt` | Start/reconnect session |
+| `cwt --solo` | Coordinator only |
+| `cwt --kill` | Terminate session |
+| `wt-task worker "msg"` | Send task |
+| `wt-msg send to "msg"` | Send message |
+| `wt-msg status` | View messages |
+| `wt-kb query "X"` | Search KB |
+| `cwt budget --limit X` | Set limit |
 | `Ctrl+B ?` | Help popup |
-| `Ctrl+B 0-9` | Trocar janela |
+| `Ctrl+B 0-9` | Switch window |
 | `Ctrl+B d` | Detach |

@@ -1,5 +1,5 @@
 /**
- * Voting - Sistema de votação para decisões colegiadas
+ * Voting - Voting system for collegial decisions
  */
 
 class Voting {
@@ -10,12 +10,12 @@ class Voting {
   }
 
   /**
-   * Criar uma nova votação
-   * @param {string} initiator - Worker que iniciou
-   * @param {string} decision - Descrição da decisão
-   * @param {string[]} options - Opções de voto
-   * @param {number} timeout - Timeout em ms (default 60s)
-   * @param {number} quorum - Mínimo de votos necessários (default: todos workers ativos)
+   * Create a new vote
+   * @param {string} initiator - Worker that initiated
+   * @param {string} decision - Decision description
+   * @param {string[]} options - Voting options
+   * @param {number} timeout - Timeout in ms (default 60s)
+   * @param {number} quorum - Minimum votes required (default: all active workers)
    */
   createVote(initiator, decision, options, timeout = 60000, quorum = null) {
     const voteId = `vote-${Date.now()}`;
@@ -36,7 +36,7 @@ class Voting {
 
     this.activeVotes.set(voteId, vote);
 
-    // Publicar solicitação de voto
+    // Publish vote request
     this.pubsub.publish('vote.request', {
       voteId,
       decision,
@@ -46,7 +46,7 @@ class Voting {
       quorum: vote.quorum
     }, initiator);
 
-    // Configurar timeout
+    // Set timeout
     setTimeout(() => {
       this.closeVote(voteId);
     }, timeout);
@@ -56,7 +56,7 @@ class Voting {
   }
 
   /**
-   * Registrar voto de um worker
+   * Register a worker's vote
    */
   castVote(voteId, workerId, option) {
     const vote = this.activeVotes.get(voteId);
@@ -75,7 +75,7 @@ class Voting {
 
     vote.votes[workerId] = option;
 
-    // Publicar que voto foi registrado
+    // Publish that vote was recorded
     this.pubsub.publish('vote.cast', {
       voteId,
       workerId,
@@ -86,7 +86,7 @@ class Voting {
 
     console.log(`[Voting] ${workerId} voted "${option}" on ${voteId}`);
 
-    // Verificar se atingiu quorum
+    // Check if quorum reached
     if (Object.keys(vote.votes).length >= vote.quorum) {
       this.closeVote(voteId);
     }
@@ -95,7 +95,7 @@ class Voting {
   }
 
   /**
-   * Fechar votação e calcular resultado
+   * Close vote and calculate result
    */
   closeVote(voteId) {
     const vote = this.activeVotes.get(voteId);
@@ -107,7 +107,7 @@ class Voting {
     vote.status = 'closed';
     vote.closedAt = new Date().toISOString();
 
-    // Contar votos
+    // Count votes
     const counts = {};
     for (const option of vote.options) {
       counts[option] = 0;
@@ -117,7 +117,7 @@ class Voting {
       counts[option]++;
     }
 
-    // Determinar vencedor
+    // Determine winner
     let winner = null;
     let maxVotes = 0;
     let tie = false;
@@ -140,7 +140,7 @@ class Voting {
       quorumReached: Object.keys(vote.votes).length >= vote.quorum
     };
 
-    // Publicar resultado
+    // Publish result
     this.pubsub.publish('vote.result', {
       voteId,
       decision: vote.decision,
@@ -150,7 +150,7 @@ class Voting {
 
     console.log(`[Voting] Vote ${voteId} closed. Winner: ${vote.result.winner || 'TIE'}`);
 
-    // Manter no histórico por 1 hora, depois limpar
+    // Keep in history for 1 hour, then clean up
     setTimeout(() => {
       this.activeVotes.delete(voteId);
     }, 3600000);
@@ -159,14 +159,14 @@ class Voting {
   }
 
   /**
-   * Obter status de uma votação
+   * Get vote status
    */
   getVoteStatus(voteId) {
     return this.activeVotes.get(voteId) || null;
   }
 
   /**
-   * Listar votações ativas
+   * List active votes
    */
   getActiveVotes() {
     const active = [];

@@ -1,5 +1,5 @@
 /**
- * Socket Server - Unix Socket handler com protocolo JSON-RPC
+ * Socket Server - Unix Socket handler with JSON-RPC protocol
  */
 
 const net = require('net');
@@ -17,7 +17,7 @@ class SocketServer {
   }
 
   start() {
-    // Remover socket antigo se existir
+    // Remove old socket if exists
     if (fs.existsSync(this.socketPath)) {
       fs.unlinkSync(this.socketPath);
     }
@@ -27,7 +27,7 @@ class SocketServer {
     });
 
     this.server.listen(this.socketPath, () => {
-      // Definir permissões do socket
+      // Set socket permissions
       fs.chmodSync(this.socketPath, 0o777);
       console.log(`[SocketServer] Listening on ${this.socketPath}`);
     });
@@ -54,9 +54,9 @@ class SocketServer {
     socket.on('data', (data) => {
       buffer += data.toString();
 
-      // Processar mensagens completas (delimitadas por newline)
+      // Process complete messages (newline delimited)
       const lines = buffer.split('\n');
-      buffer = lines.pop(); // Manter fragmento incompleto
+      buffer = lines.pop(); // Keep incomplete fragment
 
       for (const line of lines) {
         if (line.trim()) {
@@ -181,7 +181,7 @@ class SocketServer {
           break;
 
         case 'broadcast':
-          // Persistir broadcast no histórico de mensagens
+          // Persist broadcast in message history
           this.stateManager.addMessage(
             clientInfo.workerId || 'anonymous',
             null, // broadcast = to everyone
@@ -279,7 +279,7 @@ class SocketServer {
           if (!this.knowledgeManager) {
             error = 'KnowledgeManager not initialized';
           } else if (clientInfo.workerId !== 'coordinator') {
-            error = 'kb_add: apenas coordinator pode adicionar';
+            error = 'kb_add: only coordinator can add entries';
           } else {
             result = this.knowledgeManager.add(params);
             if (result.success) {
@@ -292,7 +292,7 @@ class SocketServer {
           if (!this.knowledgeManager) {
             error = 'KnowledgeManager not initialized';
           } else if (clientInfo.workerId !== 'coordinator') {
-            error = 'kb_update: apenas coordinator pode atualizar';
+            error = 'kb_update: only coordinator can update entries';
           } else {
             result = this.knowledgeManager.update(params.id, params.updates);
             if (result.success) {
@@ -305,7 +305,7 @@ class SocketServer {
           if (!this.knowledgeManager) {
             error = 'KnowledgeManager not initialized';
           } else if (clientInfo.workerId !== 'coordinator') {
-            error = 'kb_delete: apenas coordinator pode remover';
+            error = 'kb_delete: only coordinator can delete entries';
           } else {
             result = this.knowledgeManager.delete(params.id);
             if (result.success) {
@@ -318,7 +318,7 @@ class SocketServer {
           if (!this.knowledgeManager) {
             error = 'KnowledgeManager not initialized';
           } else if (clientInfo.workerId !== 'coordinator') {
-            error = 'kb_learn: apenas coordinator pode salvar padrões';
+            error = 'kb_learn: only coordinator can save patterns';
           } else {
             result = this.knowledgeManager.learn(params);
             if (result.success) {
@@ -363,7 +363,7 @@ class SocketServer {
           if (!this.knowledgeManager) {
             error = 'KnowledgeManager not initialized';
           } else if (clientInfo.workerId !== 'coordinator') {
-            error = 'safety_add: apenas coordinator pode adicionar regras';
+            error = 'safety_add: only coordinator can add rules';
           } else {
             result = this.knowledgeManager.addSafetyRule(params);
             if (result.success) {
@@ -390,7 +390,7 @@ class SocketServer {
     clientInfo.workerId = workerId;
     const worker = this.stateManager.registerWorker(workerId, params.capabilities || []);
 
-    // Auto-subscribe em tópicos básicos
+    // Auto-subscribe to basic topics
     const defaultTopics = ['broadcast', 'direct.message', 'vote.request', 'blocker.added'];
     for (const topic of defaultTopics) {
       this.pubsub.subscribe(workerId, topic, (msg) => {

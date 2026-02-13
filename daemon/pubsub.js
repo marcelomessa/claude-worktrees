@@ -1,5 +1,5 @@
 /**
- * PubSub - Sistema de publicação/subscrição
+ * PubSub - Publish/subscribe system
  */
 
 class PubSub {
@@ -8,7 +8,7 @@ class PubSub {
     this.clientSubscriptions = new Map(); // clientId -> Set of topics
   }
 
-  // Tópicos disponíveis
+  // Available topics
   static TOPICS = {
     // Tasks
     TASK_CREATED: 'task.created',
@@ -42,15 +42,15 @@ class PubSub {
     DIRECT_MESSAGE: 'direct.message'
   };
 
-  // Subscrever em um tópico
+  // Subscribe to a topic
   subscribe(clientId, topic, callback) {
-    // Adicionar callback ao tópico
+    // Add callback to topic
     if (!this.subscriptions.has(topic)) {
       this.subscriptions.set(topic, new Set());
     }
     this.subscriptions.get(topic).add({ clientId, callback });
 
-    // Rastrear subscrições do cliente
+    // Track client subscriptions
     if (!this.clientSubscriptions.has(clientId)) {
       this.clientSubscriptions.set(clientId, new Set());
     }
@@ -60,7 +60,7 @@ class PubSub {
     return true;
   }
 
-  // Desinscrever de um tópico
+  // Unsubscribe from a topic
   unsubscribe(clientId, topic) {
     if (this.subscriptions.has(topic)) {
       const subs = this.subscriptions.get(topic);
@@ -79,7 +79,7 @@ class PubSub {
     return true;
   }
 
-  // Desinscrever de todos os tópicos (quando cliente desconecta)
+  // Unsubscribe from all topics (when client disconnects)
   unsubscribeAll(clientId) {
     const topics = this.clientSubscriptions.get(clientId);
     if (topics) {
@@ -91,7 +91,7 @@ class PubSub {
     console.log(`[PubSub] ${clientId} unsubscribed from all topics`);
   }
 
-  // Publicar mensagem em um tópico
+  // Publish message to a topic
   publish(topic, data, fromClientId = null) {
     const message = {
       topic,
@@ -108,7 +108,7 @@ class PubSub {
 
     let delivered = 0;
     for (const sub of subs) {
-      // Não enviar para o próprio remetente
+      // Don't send to the sender itself
       if (sub.clientId !== fromClientId) {
         try {
           sub.callback(message);
@@ -123,12 +123,12 @@ class PubSub {
     return delivered;
   }
 
-  // Publicar para todos os clientes (broadcast)
+  // Publish to all clients (broadcast)
   broadcast(data, fromClientId = null) {
     return this.publish(PubSub.TOPICS.BROADCAST, data, fromClientId);
   }
 
-  // Enviar mensagem direta para um cliente específico
+  // Send direct message to a specific client
   sendDirect(toClientId, data, fromClientId) {
     const message = {
       topic: PubSub.TOPICS.DIRECT_MESSAGE,
@@ -160,7 +160,7 @@ class PubSub {
     return false;
   }
 
-  // Obter estatísticas
+  // Get statistics
   getStats() {
     const stats = {
       topics: {},

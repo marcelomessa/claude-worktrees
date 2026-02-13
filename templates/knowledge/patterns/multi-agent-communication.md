@@ -7,7 +7,7 @@ keywords: [multi-agent, communication, coordinator, worker, message, broadcast]
 
 # Multi-Agent Communication
 
-## Hierarquia
+## Hierarchy
 
 ```
 coordinator (central)
@@ -16,67 +16,67 @@ coordinator (central)
     └── worker-3 (docs)
 ```
 
-## Quando Comunicar
+## When to Communicate
 
 ### Worker → Coordinator
 
-1. **Bloqueio**: não consegue prosseguir
-2. **Decisão arquitetural**: afeta outros workers
-3. **Review necessário**: código pronto para merge
-4. **Descoberta importante**: info útil para outros
+1. **Blocker**: cannot proceed
+2. **Architectural decision**: affects other workers
+3. **Review needed**: code ready for merge
+4. **Important discovery**: useful info for others
 
 ```bash
-wt-msg send coordinator "BLOQUEIO: API /users retorna 404, preciso do endpoint"
-wt-msg send coordinator "DECISÃO: usar Redux ou Context para state?"
-wt-msg send coordinator "REVIEW: branch feature-x pronta"
+wt-msg send coordinator "BLOCKER: API /users returns 404, need the endpoint"
+wt-msg send coordinator "DECISION: use Redux or Context for state?"
+wt-msg send coordinator "REVIEW: branch feature-x ready"
 ```
 
 ### Coordinator → Worker
 
-1. **Task assignment**: nova tarefa
-2. **Resposta a bloqueio**: solução/orientação
-3. **Broadcast**: info geral
+1. **Task assignment**: new task
+2. **Blocker response**: solution/guidance
+3. **Broadcast**: general info
 
 ```bash
-wt-task backend "Implementar endpoint /api/users"
-wt-msg send frontend "API está pronta: POST /api/auth/login"
-wt-msg broadcast "Mudança de arquitetura: todos usem TypeScript strict"
+wt-task backend "Implement endpoint /api/users"
+wt-msg send frontend "API is ready: POST /api/auth/login"
+wt-msg broadcast "Architecture change: everyone use TypeScript strict"
 ```
 
 ### Worker → Worker
 
-Geralmente via discoveries (evitar comunicação direta):
+Generally via discoveries (avoid direct communication):
 
 ```bash
-wt-kb discover "API rate limit" "API /search tem limit 100/min"
+wt-kb discover "API rate limit" "API /search has limit 100/min"
 ```
 
-## Formato de Mensagens
+## Message Format
 
-### Bloqueio
+### Blocker
 ```
-BLOQUEIO: [descrição curta]
-Contexto: [o que você tentou]
-Preciso: [o que você precisa]
+BLOCKER: [short description]
+Context: [what you tried]
+Need: [what you need]
 ```
 
-### Descoberta
+### Discovery
 ```
-DISCOVERY: [título]
-[descrição]
-Relevância: [quem deve saber]
+DISCOVERY: [title]
+[description]
+Relevance: [who should know]
 ```
 
 ### Task Completion
 ```
 DONE: [task]
-Arquivos: [lista de arquivos modificados]
-Branch: [nome da branch]
+Files: [list of modified files]
+Branch: [branch name]
 ```
 
 ## Anti-patterns
 
-- Mensagens longas demais (resumir)
-- Perguntar sem pesquisar primeiro (`wt-kb query`)
-- Comunicação direta worker-worker para decisões (usar coordinator)
-- Não reportar bloqueios (ficar travado silenciosamente)
+- Messages too long (summarize)
+- Asking without researching first (`wt-kb query`)
+- Direct worker-worker communication for decisions (use coordinator)
+- Not reporting blockers (being stuck silently)

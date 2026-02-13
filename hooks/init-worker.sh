@@ -7,7 +7,7 @@
 
 WORKER_ID="${CLAUDE_WORKER_ID:-$(basename "$PWD")}"
 
-# Detectar .cwt/ subindo a árvore de diretórios
+# Detect .cwt/ by walking up the directory tree
 find_cwt_root() {
   if [[ -n "$CWT_PROJECT_ROOT" && -d "$CWT_PROJECT_ROOT/.cwt" ]]; then
     echo "$CWT_PROJECT_ROOT"

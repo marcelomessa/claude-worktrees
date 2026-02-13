@@ -1,26 +1,26 @@
 #!/bin/bash
 # =============================================================================
-# WT-CHECK - Status de coordenação para CWT
+# WT-CHECK - Coordination status for CWT
 # =============================================================================
-# Usado pelos hooks do Claude para mostrar status de comunicação
+# Used by Claude hooks to show communication status
 #
 # Usage:
-#   wt-check.sh status    # Status completo (UserPromptSubmit)
-#   wt-check.sh quick     # Verificação rápida (PostToolUse)
+#   wt-check.sh status    # Full status (UserPromptSubmit)
+#   wt-check.sh quick     # Quick check (PostToolUse)
 # =============================================================================
 
 MODE="${1:-status}"
 WORKER_ID="${CLAUDE_WORKER_ID:-$(basename "$PWD")}"
 
-# Encontrar socket do projeto
+# Find project socket
 find_socket() {
-  # 1. Variável de ambiente
+  # 1. Environment variable
   if [[ -n "$CWT_SOCKET" && -S "$CWT_SOCKET" ]]; then
     echo "$CWT_SOCKET"
     return 0
   fi
 
-  # 2. Subir árvore procurando .cwt/cwt.sock
+  # 2. Walk up tree looking for .cwt/cwt.sock
   local dir="$PWD"
   while [[ "$dir" != "/" ]]; do
     if [[ -S "$dir/.cwt/cwt.sock" ]]; then
@@ -35,15 +35,15 @@ find_socket() {
 
 SOCKET=$(find_socket)
 
-# Se não tem socket, sair silenciosamente
+# If no socket, exit silently
 [[ -z "$SOCKET" || ! -S "$SOCKET" ]] && exit 0
 
-# Função para enviar request ao daemon
+# Function to send request to daemon
 send_request() {
   echo "$1" | nc -w 1 -U "$SOCKET" 2>/dev/null
 }
 
-# Registrar worker e enviar request
+# Register worker and send request
 send_as_worker() {
   local request="$1"
   (
@@ -53,7 +53,7 @@ send_as_worker() {
   ) | nc -w 2 -U "$SOCKET" 2>/dev/null | tail -1
 }
 
-# Verificar se daemon está respondendo
+# Check if daemon is responding
 check_daemon() {
   local pong=$(echo '{"method":"ping","id":1}' | nc -w 1 -U "$SOCKET" 2>/dev/null)
   if echo "$pong" | grep -q "pong"; then
@@ -92,10 +92,10 @@ mode_status() {
     return
   fi
 
-  # Registrar heartbeat
+  # Register heartbeat
   send_as_worker '{"method":"heartbeat","id":1}' >/dev/null
 
-  # Obter mensagens não lidas
+  # Get unread messages
   local messages=$(send_as_worker '{"method":"get_messages","id":2}')
   local msg_count=$(echo "$messages" | python3 -c "
 import sys, json
@@ -107,7 +107,7 @@ except:
     print(0)
 " 2>/dev/null || echo 0)
 
-  # Verificar votações ativas
+  # Check active votes
   local votes=$(send_request '{"method":"get_active_votes","id":3}')
   local vote_count=$(echo "$votes" | python3 -c "
 import sys, json
@@ -137,10 +137,10 @@ mode_quick() {
     return
   fi
 
-  # Registrar heartbeat
+  # Register heartbeat
   send_as_worker '{"method":"heartbeat","id":1}' >/dev/null
 
-  # Verificar mensagens
+  # Check messages
   local messages=$(send_as_worker '{"method":"get_messages","id":2}')
   local msg_count=$(echo "$messages" | python3 -c "
 import sys, json
@@ -152,7 +152,7 @@ except:
     print(0)
 " 2>/dev/null || echo 0)
 
-  # Verificar votações
+  # Check votes
   local votes=$(send_request '{"method":"get_active_votes","id":3}')
   local vote_count=$(echo "$votes" | python3 -c "
 import sys, json

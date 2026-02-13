@@ -372,6 +372,24 @@ Check `.claude/settings.json` has correct paths:
 }
 ```
 
+## Disclaimer
+
+This software orchestrates multiple AI agents that execute commands autonomously
+using `--dangerously-skip-permissions` mode. By using this software you acknowledge:
+
+- **Code loss risk**: AI agents may modify, delete, or overwrite files. Safety hooks
+  are included but do not guarantee prevention of all destructive actions.
+- **No guarantee of correctness**: Code generated or merged by AI agents may contain
+  bugs or security vulnerabilities. Review all changes before deploying.
+- **Financial risk**: This software makes API calls to Anthropic's Claude service.
+  You are responsible for monitoring your own usage and costs.
+- **System impact**: Creates tmux sessions, background processes, and executes shell
+  commands. Improper use may affect system stability.
+- **Data responsibility**: Back up your code before using this software. The authors
+  accept no liability for data loss or unintended modifications.
+
+**USE AT YOUR OWN RISK.**
+
 ## License
 
-MIT
+[MIT](LICENSE)

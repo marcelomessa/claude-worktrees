@@ -12,15 +12,15 @@
 
 WORKER_ID="${CLAUDE_WORKER_ID:-coord}"
 
-# Detectar .cwt/ subindo a árvore de diretórios
+# Detect .cwt/ by walking up the directory tree
 find_cwt_root() {
-  # 1. Variável de ambiente
+  # 1. Environment variable
   if [[ -n "$CWT_PROJECT_ROOT" && -d "$CWT_PROJECT_ROOT/.cwt" ]]; then
     echo "$CWT_PROJECT_ROOT"
     return 0
   fi
 
-  # 2. Subir árvore
+  # 2. Walk up tree
   local dir="$PWD"
   while [[ "$dir" != "/" ]]; do
     if [[ -d "$dir/.cwt" ]]; then
@@ -33,7 +33,7 @@ find_cwt_root() {
   return 1
 }
 
-# Determinar arquivo de estado e sessão
+# Determine state file and session
 get_state_file() {
   local cwt_root=$(find_cwt_root)
   if [[ -n "$cwt_root" ]]; then

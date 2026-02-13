@@ -17,7 +17,7 @@
 
 WORKER_ID="${CLAUDE_WORKER_ID:-$(basename "$PWD")}"
 
-# Detectar .cwt/ subindo a árvore de diretórios
+# Detect .cwt/ by walking up the directory tree
 find_cwt_root() {
   if [[ -n "$CWT_PROJECT_ROOT" && -d "$CWT_PROJECT_ROOT/.cwt" ]]; then
     echo "$CWT_PROJECT_ROOT"
@@ -38,7 +38,7 @@ find_cwt_root() {
 
 CWT_ROOT=$(find_cwt_root)
 
-# Encontrar socket do daemon
+# Find daemon socket
 find_socket() {
   if [[ -n "$CWT_SOCKET" && -S "$CWT_SOCKET" ]]; then
     echo "$CWT_SOCKET"
@@ -60,7 +60,7 @@ daemon_available() {
   return 1
 }
 
-# Registrar e enviar request
+# Register and send request
 send_as_worker() {
   local request="$1"
   (
@@ -70,7 +70,7 @@ send_as_worker() {
   ) | nc -w 2 -U "$SOCKET" 2>/dev/null | tail -1
 }
 
-# Formatar resposta JSON
+# Format JSON response
 format_response() {
   python3 -c "
 import sys, json
@@ -109,7 +109,7 @@ except Exception as e:
 " 2>/dev/null
 }
 
-# Formatar conteúdo de entrada única
+# Format single entry content
 format_entry() {
   python3 -c "
 import sys, json
@@ -133,14 +133,14 @@ except Exception as e:
 " 2>/dev/null
 }
 
-# Verificar daemon (para operações de escrita)
+# Check daemon (for write operations)
 require_daemon() {
   if ! daemon_available; then
     echo "Error: MCP daemon not running (required for writes)"
     echo ""
     echo "To start:"
-    echo "  cwt              # Inicia ambiente multi-agent completo"
-    echo "  cwt --daemon     # Apenas o daemon (background)"
+    echo "  cwt              # Start full multi-agent environment"
+    echo "  cwt --daemon     # Daemon only (background)"
     echo ""
     echo "Reads (query, list, get) work offline."
     exit 1
@@ -148,41 +148,41 @@ require_daemon() {
 }
 
 # =============================================================================
-# FALLBACK: File-based reads (quando daemon não disponível)
+# FALLBACK: File-based reads (when daemon not available)
 # =============================================================================
 
-# Diretórios de KB
+# KB directories
 PROJECT_KB="${CWT_ROOT:-.}/.cwt/knowledge"
 GLOBAL_KB="$HOME/.cwt/knowledge"
 
-# Listar arquivos de KB (projeto + global, projeto tem prioridade)
+# List KB files (project + global, project has priority)
 list_kb_files() {
   local category="${1:-}"
   local seen=()
 
-  # Função para listar de um diretório
+  # Function to list from a directory
   list_from_dir() {
     local dir="$1"
     local cat="$2"
 
     if [[ -n "$cat" ]]; then
-      # Categoria específica
+      # Specific category
       [[ -d "$dir/$cat" ]] && find "$dir/$cat" -name "*.md" -type f 2>/dev/null
     else
-      # Todas categorias
+      # All categories
       for subdir in patterns guidelines architecture; do
         [[ -d "$dir/$subdir" ]] && find "$dir/$subdir" -name "*.md" -type f 2>/dev/null
       done
     fi
   }
 
-  # Projeto primeiro (prioridade)
+  # Project first (priority)
   list_from_dir "$PROJECT_KB" "$category"
-  # Depois global
+  # Then global
   list_from_dir "$GLOBAL_KB" "$category"
 }
 
-# Parsear frontmatter de arquivo markdown
+# Parse markdown file frontmatter
 parse_md_file() {
   local file="$1"
   python3 -c "
@@ -233,7 +233,7 @@ fallback_list() {
     local dirname=$(basename "$(dirname "$file")")
     local id="$dirname-$basename"
 
-    # Skip duplicates (projeto já mostrado)
+    # Skip duplicates (project already shown)
     [[ " ${seen_ids[*]} " =~ " $id " ]] && continue
     seen_ids+=("$id")
 
@@ -264,10 +264,10 @@ fallback_query() {
 
     [[ " ${seen_ids[*]} " =~ " $id " ]] && continue
 
-    # Parse arquivo
+    # Parse file
     local data=$(parse_md_file "$file")
 
-    # Verificar match em title, keywords, content
+    # Check match in title, keywords, content
     local match=$(echo "$data" | python3 -c "
 import sys, json
 query = '$query_lower'
@@ -301,7 +301,7 @@ if query in title or query in keywords_str or query in content:
 fallback_get() {
   local id="$1"
 
-  # Tentar encontrar arquivo pelo id (category-name ou só name)
+  # Try to find file by id (category-name or just name)
   local found=""
 
   while IFS= read -r file; do
@@ -322,7 +322,7 @@ fallback_get() {
     return 1
   fi
 
-  # Mostrar conteúdo
+  # Show content
   local data=$(parse_md_file "$found")
   echo "$data" | python3 -c "
 import sys, json
@@ -353,14 +353,14 @@ case "${1:-help}" in
     [[ -z "$QUERY" ]] && echo "Usage: wt-kb query \"search terms\"" && exit 1
 
     if daemon_available; then
-      # Usar daemon
+      # Use daemon
       PARAMS=$(python3 -c "import json; print(json.dumps({'query': '$QUERY'}))")
       RESPONSE=$(send_as_worker "{\"method\":\"kb_query\",\"params\":$PARAMS,\"id\":1}")
       echo "Search: $QUERY"
       echo "---"
       echo "$RESPONSE" | format_response
     else
-      # Fallback: ler arquivos diretamente
+      # Fallback: read files directly
       fallback_query "$QUERY"
     fi
     ;;
@@ -376,7 +376,7 @@ case "${1:-help}" in
     done
 
     if daemon_available; then
-      # Usar daemon
+      # Use daemon
       if [[ -n "$CATEGORY" ]]; then
         RESPONSE=$(send_as_worker "{\"method\":\"kb_list\",\"params\":{\"category\":\"$CATEGORY\"},\"id\":1}")
         echo "Category: $CATEGORY"
@@ -387,7 +387,7 @@ case "${1:-help}" in
       echo "---"
       echo "$RESPONSE" | format_response
     else
-      # Fallback: ler arquivos diretamente
+      # Fallback: read files directly
       fallback_list "$CATEGORY"
     fi
     ;;
@@ -397,11 +397,11 @@ case "${1:-help}" in
     [[ -z "$ID" ]] && echo "Usage: wt-kb get <id>" && exit 1
 
     if daemon_available; then
-      # Usar daemon
+      # Use daemon
       RESPONSE=$(send_as_worker "{\"method\":\"kb_get\",\"params\":{\"id\":\"$ID\"},\"id\":1}")
       echo "$RESPONSE" | format_entry
     else
-      # Fallback: ler arquivos diretamente
+      # Fallback: read files directly
       fallback_get "$ID"
     fi
     ;;

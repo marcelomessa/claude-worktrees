@@ -14,7 +14,7 @@ echo "╚═══════════════════════�
 echo ""
 
 # Check dependencies
-echo "🔍 Verificando dependências..."
+echo "🔍 Checking dependencies..."
 MISSING=""
 command -v git >/dev/null 2>&1 || MISSING="$MISSING git"
 command -v tmux >/dev/null 2>&1 || MISSING="$MISSING tmux"
@@ -25,13 +25,13 @@ command -v claude >/dev/null 2>&1 || MISSING="$MISSING claude"
 
 if [[ -n "$MISSING" ]]; then
   echo ""
-  echo "⚠️  Dependências faltando:$MISSING"
+  echo "⚠️  Missing dependencies:$MISSING"
   echo ""
-  echo "Instale com:"
+  echo "Install with:"
   echo "  brew install tmux jq node netcat"
   echo "  npm install -g @anthropic-ai/claude-code"
   echo ""
-  read -p "Continuar mesmo assim? [y/N] " -n 1 -r
+  read -p "Continue anyway? [y/N] " -n 1 -r
   echo
   [[ ! $REPLY =~ ^[Yy]$ ]] && exit 1
 fi
@@ -40,12 +40,12 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 # Create directories
-echo "📁 Criando diretórios..."
+echo "📁 Creating directories..."
 mkdir -p "$INSTALL_DIR"
 mkdir -p "$BIN_DIR"
 
 # Copy files
-echo "📦 Copiando arquivos..."
+echo "📦 Copying files..."
 cp -r "$SCRIPT_DIR/bin" "$INSTALL_DIR/"
 cp -r "$SCRIPT_DIR/lib" "$INSTALL_DIR/"
 cp -r "$SCRIPT_DIR/daemon" "$INSTALL_DIR/" 2>/dev/null || true
@@ -63,7 +63,7 @@ chmod +x "$INSTALL_DIR/daemon/"*.js 2>/dev/null || true
 chmod +x "$INSTALL_DIR/demo/"*.sh 2>/dev/null || true
 
 # Create symlinks
-echo "🔗 Criando symlinks..."
+echo "🔗 Creating symlinks..."
 ln -sf "$INSTALL_DIR/bin/cwt" "$BIN_DIR/cwt"
 ln -sf "$INSTALL_DIR/lib/wt-msg" "$BIN_DIR/wt-msg"
 ln -sf "$INSTALL_DIR/lib/wt-init" "$BIN_DIR/wt-init"
@@ -76,8 +76,8 @@ ln -sf "$INSTALL_DIR/lib/wt-billing" "$BIN_DIR/wt-billing"
 ln -sf "$INSTALL_DIR/lib/wt-branch" "$BIN_DIR/wt-branch"
 ln -sf "$INSTALL_DIR/lib/wt-kb" "$BIN_DIR/wt-kb"
 
-# Sincronizar Knowledge Base templates
-echo "📚 Sincronizando Knowledge Base..."
+# Sync Knowledge Base templates
+echo "📚 Syncing Knowledge Base..."
 GLOBAL_KB="$HOME/.cwt/knowledge"
 TEMPLATES_KB="$INSTALL_DIR/templates/knowledge"
 
@@ -100,7 +100,7 @@ fi
 # Check PATH
 if [[ ":$PATH:" != *":$BIN_DIR:"* ]]; then
   echo ""
-  echo "⚠️  Adicione ao seu ~/.zshrc ou ~/.bashrc:"
+  echo "⚠️  Add to your ~/.zshrc or ~/.bashrc:"
   echo ""
   echo "    export PATH=\"\$HOME/.local/bin:\$PATH\""
   echo ""
@@ -119,43 +119,43 @@ if [[ -n "$SHELL_RC" ]]; then
     echo "" >> "$SHELL_RC"
     echo "# Claude Worktrees" >> "$SHELL_RC"
     echo "export PATH=\"\$HOME/.local/bin:\$PATH\"" >> "$SHELL_RC"
-    echo "✅ PATH adicionado ao $SHELL_RC"
+    echo "✅ PATH added to $SHELL_RC"
   fi
 fi
 
 echo ""
-echo "✅ Instalação concluída!"
+echo "✅ Installation complete!"
 echo ""
-echo "Uso:"
-echo "  cwt init --repo <repo>   # Inicializar projeto"
-echo "  wt-init <workers...>     # Criar worktrees"
-echo "  cwt                      # Iniciar ambiente multi-agente"
+echo "Usage:"
+echo "  cwt init --repo <repo>   # Initialize project"
+echo "  wt-init <workers...>     # Create worktrees"
+echo "  cwt                      # Start multi-agent environment"
 echo ""
-echo "Comunicação:"
-echo "  wt-msg send <worker> \"msg\"  # Enviar mensagem"
-echo "  wt-task <worker> \"tarefa\"   # Enviar tarefa"
+echo "Communication:"
+echo "  wt-msg send <worker> \"msg\"  # Send message"
+echo "  wt-task <worker> \"task\"     # Send task"
 echo "  wt-sync broadcast \"msg\"     # Broadcast"
 echo ""
 echo "Session Overrides:"
-echo "  wt-override allow \"git push\" --duration 2h  # Auto-aprovar asks"
-echo "  wt-override block \"rm -rf\"                  # Bloqueio temporário"
-echo "  wt-override list                            # Listar overrides"
+echo "  wt-override allow \"git push\" --duration 2h  # Auto-approve asks"
+echo "  wt-override block \"rm -rf\"                  # Temporary block"
+echo "  wt-override list                            # List overrides"
 echo ""
-echo "Billing (requer npx ccusage):"
-echo "  wt-billing              # Custo do projeto atual"
-echo "  wt-billing all          # Todos os projetos"
-echo "  wt-billing total        # Total (para status bar)"
+echo "Billing (requires npx ccusage):"
+echo "  wt-billing              # Current project cost"
+echo "  wt-billing all          # All projects"
+echo "  wt-billing total        # Total (for status bar)"
 echo ""
 echo "Branch sync:"
-echo "  wt-branch               # Status das branches"
-echo "  wt-branch sync          # Fetch e status"
-echo "  wt-branch check         # Check rápido (para hooks)"
+echo "  wt-branch               # Branch status"
+echo "  wt-branch sync          # Fetch and status"
+echo "  wt-branch check         # Quick check (for hooks)"
 echo ""
 echo "Knowledge Base:"
-echo "  wt-kb query \"text\"      # Buscar padrões/guidelines"
-echo "  wt-kb list              # Listar entradas"
-echo "  wt-kb discover \"...\"    # Compartilhar descoberta"
-echo "  wt-kb safety check X    # Verificar se comando é seguro"
+echo "  wt-kb query \"text\"      # Search patterns/guidelines"
+echo "  wt-kb list              # List entries"
+echo "  wt-kb discover \"...\"    # Share discovery"
+echo "  wt-kb safety check X    # Check if command is safe"
 echo ""
-echo "Reinicie o terminal ou execute:"
+echo "Restart terminal or run:"
 echo "  source $SHELL_RC"

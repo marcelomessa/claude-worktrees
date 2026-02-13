@@ -1,11 +1,11 @@
 #!/bin/bash
 # =============================================================================
-# WT-OVERRIDE - Gerenciar overrides de sessão
+# WT-OVERRIDE - Manage session overrides
 # =============================================================================
 #
-# Permite adicionar/remover overrides temporários que:
-# - auto_approve: responde automaticamente "y" para comandos em "ask"
-# - block: adiciona bloqueios temporários na sessão
+# Allows adding/removing temporary overrides that:
+# - auto_approve: automatically responds "y" for commands in "ask"
+# - block: adds temporary blocks in the session
 #
 # Usage:
 #   wt-override allow "git push" --duration 2h --task "Deploy"
@@ -104,27 +104,27 @@ case "${1:-help}" in
       esac
     done
 
-    # Verificar se já existe
+    # Check if it already exists
     EXISTS=$(jq -r ".overrides.auto_approve | index(\"$PATTERN\")" "$OVERRIDES_FILE" 2>/dev/null)
     if [[ "$EXISTS" != "null" && -n "$EXISTS" ]]; then
-      echo "⚠️  Pattern já existe: $PATTERN"
+      echo "⚠️  Pattern already exists: $PATTERN"
     else
       jq ".overrides.auto_approve += [\"$PATTERN\"]" "$OVERRIDES_FILE" > "$OVERRIDES_FILE.tmp" && \
         mv "$OVERRIDES_FILE.tmp" "$OVERRIDES_FILE"
-      echo "✅ Auto-approve adicionado: $PATTERN"
+      echo "✅ Auto-approve added: $PATTERN"
     fi
 
     if [[ -n "$DURATION" ]]; then
       EXPIRY=$(calc_expiry "$DURATION")
       jq ".expires = \"$EXPIRY\"" "$OVERRIDES_FILE" > "$OVERRIDES_FILE.tmp" && \
         mv "$OVERRIDES_FILE.tmp" "$OVERRIDES_FILE"
-      echo "   ⏰ Expira: $EXPIRY"
+      echo "   ⏰ Expires: $EXPIRY"
     fi
 
     if [[ -n "$TASK" ]]; then
       jq ".task = \"$TASK\"" "$OVERRIDES_FILE" > "$OVERRIDES_FILE.tmp" && \
         mv "$OVERRIDES_FILE.tmp" "$OVERRIDES_FILE"
-      echo "   📋 Tarefa: $TASK"
+      echo "   📋 Task: $TASK"
     fi
     ;;
 
@@ -143,21 +143,21 @@ case "${1:-help}" in
       esac
     done
 
-    # Verificar se já existe
+    # Check if it already exists
     EXISTS=$(jq -r ".overrides.block | index(\"$PATTERN\")" "$OVERRIDES_FILE" 2>/dev/null)
     if [[ "$EXISTS" != "null" && -n "$EXISTS" ]]; then
-      echo "⚠️  Pattern já existe: $PATTERN"
+      echo "⚠️  Pattern already exists: $PATTERN"
     else
       jq ".overrides.block += [\"$PATTERN\"]" "$OVERRIDES_FILE" > "$OVERRIDES_FILE.tmp" && \
         mv "$OVERRIDES_FILE.tmp" "$OVERRIDES_FILE"
-      echo "🚫 Block adicionado: $PATTERN"
+      echo "🚫 Block added: $PATTERN"
     fi
 
     if [[ -n "$DURATION" ]]; then
       EXPIRY=$(calc_expiry "$DURATION")
       jq ".expires = \"$EXPIRY\"" "$OVERRIDES_FILE" > "$OVERRIDES_FILE.tmp" && \
         mv "$OVERRIDES_FILE.tmp" "$OVERRIDES_FILE"
-      echo "   ⏰ Expira: $EXPIRY"
+      echo "   ⏰ Expires: $EXPIRY"
     fi
     ;;
 
@@ -170,9 +170,9 @@ case "${1:-help}" in
         mv "$OVERRIDES_FILE.tmp" "$OVERRIDES_FILE"
       jq "del(.overrides.block[] | select(. == \"$PATTERN\"))" "$OVERRIDES_FILE" > "$OVERRIDES_FILE.tmp" && \
         mv "$OVERRIDES_FILE.tmp" "$OVERRIDES_FILE"
-      echo "✅ Removido: $PATTERN"
+      echo "✅ Removed: $PATTERN"
     else
-      echo "Nenhum override configurado"
+      echo "No overrides configured"
     fi
     ;;
 
@@ -183,7 +183,7 @@ case "${1:-help}" in
 
     if [[ ! -f "$OVERRIDES_FILE" ]]; then
       echo ""
-      echo "Nenhum override de sessão configurado"
+      echo "No session overrides configured"
       echo ""
       echo "Use:"
       echo "  wt-override allow \"git push\" --duration 2h"
@@ -195,19 +195,19 @@ case "${1:-help}" in
     EXPIRES=$(jq -r '.expires // empty' "$OVERRIDES_FILE" 2>/dev/null)
     if [[ -n "$EXPIRES" && "$EXPIRES" != "null" ]]; then
       echo ""
-      echo "⏰ Expira: $EXPIRES"
+      echo "⏰ Expires: $EXPIRES"
     fi
 
     TASK=$(jq -r '.task // empty' "$OVERRIDES_FILE" 2>/dev/null)
     if [[ -n "$TASK" && "$TASK" != "null" ]]; then
-      echo "📋 Tarefa: $TASK"
+      echo "📋 Task: $TASK"
     fi
 
     echo ""
-    echo "Auto-approve (comandos 'ask' serão aprovados):"
+    echo "Auto-approve ('ask' commands will be approved):"
     APPROVES=$(jq -r '.overrides.auto_approve // [] | .[]' "$OVERRIDES_FILE" 2>/dev/null)
     if [[ -z "$APPROVES" ]]; then
-      echo "  (nenhum)"
+      echo "  (none)"
     else
       echo "$APPROVES" | while read -r p; do
         [[ -n "$p" ]] && echo "  ✅ $p"
@@ -215,10 +215,10 @@ case "${1:-help}" in
     fi
 
     echo ""
-    echo "Block (comandos bloqueados temporariamente):"
+    echo "Block (temporarily blocked commands):"
     BLOCKS=$(jq -r '.overrides.block // [] | .[]' "$OVERRIDES_FILE" 2>/dev/null)
     if [[ -z "$BLOCKS" ]]; then
-      echo "  (nenhum)"
+      echo "  (none)"
     else
       echo "$BLOCKS" | while read -r p; do
         [[ -n "$p" ]] && echo "  🚫 $p"
@@ -230,38 +230,38 @@ case "${1:-help}" in
   clear|reset)
     if [[ -f "$OVERRIDES_FILE" ]]; then
       rm -f "$OVERRIDES_FILE"
-      echo "✅ Todos os overrides foram removidos"
+      echo "✅ All overrides removed"
     else
-      echo "Nenhum override para remover"
+      echo "No overrides to remove"
     fi
     ;;
 
   help|*)
-    echo "WT-OVERRIDE - Gerenciar overrides de sessão"
+    echo "WT-OVERRIDE - Manage session overrides"
     echo ""
-    echo "Comandos:"
+    echo "Commands:"
     echo "  allow \"pattern\" [--duration 2h] [--task \"desc\"]"
-    echo "      Auto-aprova comandos que dariam prompt 'ask'"
+    echo "      Auto-approve commands that would prompt 'ask'"
     echo ""
     echo "  block \"pattern\" [--duration 2h]"
-    echo "      Bloqueia temporariamente comandos permitidos"
+    echo "      Temporarily block allowed commands"
     echo ""
     echo "  remove \"pattern\""
-    echo "      Remove um override específico"
+    echo "      Remove a specific override"
     echo ""
     echo "  list"
-    echo "      Lista todos os overrides ativos"
+    echo "      List all active overrides"
     echo ""
     echo "  clear"
-    echo "      Remove todos os overrides"
+    echo "      Remove all overrides"
     echo ""
-    echo "Exemplos:"
+    echo "Examples:"
     echo "  wt-override allow \"git push\" --duration 2h --task \"Deploy v1.2\""
     echo "  wt-override allow \"npm publish\" --duration 1h"
     echo "  wt-override block \"rm -rf\" --duration 4h"
     echo "  wt-override list"
     echo "  wt-override clear"
     echo ""
-    echo "Arquivo: $OVERRIDES_FILE"
+    echo "File: $OVERRIDES_FILE"
     ;;
 esac

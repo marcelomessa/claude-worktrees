@@ -12,15 +12,15 @@
 
 WORKER_ID="${CLAUDE_WORKER_ID:-$(basename "$PWD")}"
 
-# Detectar .cwt/ subindo a árvore de diretórios
+# Detect .cwt/ by walking up the directory tree
 find_cwt_root() {
-  # 1. Variável de ambiente
+  # 1. Environment variable
   if [[ -n "$CWT_PROJECT_ROOT" && -d "$CWT_PROJECT_ROOT/.cwt" ]]; then
     echo "$CWT_PROJECT_ROOT"
     return 0
   fi
 
-  # 2. Subir árvore
+  # 2. Walk up tree
   local dir="$PWD"
   while [[ "$dir" != "/" ]]; do
     if [[ -d "$dir/.cwt" ]]; then
@@ -35,15 +35,15 @@ find_cwt_root() {
 
 CWT_ROOT=$(find_cwt_root)
 
-# Encontrar socket do daemon
+# Find daemon socket
 find_socket() {
-  # 1. Variável de ambiente
+  # 1. Environment variable
   if [[ -n "$CWT_SOCKET" && -S "$CWT_SOCKET" ]]; then
     echo "$CWT_SOCKET"
     return 0
   fi
 
-  # 2. No .cwt do projeto
+  # 2. In project's .cwt
   if [[ -n "$CWT_ROOT" && -S "$CWT_ROOT/.cwt/cwt.sock" ]]; then
     echo "$CWT_ROOT/.cwt/cwt.sock"
     return 0
@@ -54,18 +54,18 @@ find_socket() {
 
 SOCKET=$(find_socket)
 
-# Verificar se daemon está disponível
+# Check if daemon is available
 daemon_available() {
   [[ -n "$SOCKET" && -S "$SOCKET" ]] && return 0
   return 1
 }
 
-# Enviar request ao daemon
+# Send request to daemon
 send_request() {
   echo "$1" | nc -w 2 -U "$SOCKET" 2>/dev/null
 }
 
-# Registrar e enviar
+# Register and send
 send_as_worker() {
   local request="$1"
   (
@@ -101,10 +101,10 @@ case "${1:-help}" in
   send)
     TARGET="$2"
     MESSAGE="$3"
-    [[ -z "$TARGET" || -z "$MESSAGE" ]] && echo "Uso: wt-msg send <worker> \"msg\"" && exit 1
+    [[ -z "$TARGET" || -z "$MESSAGE" ]] && echo "Usage: wt-msg send <worker> \"msg\"" && exit 1
 
     if daemon_available; then
-      # Usar daemon
+      # Use daemon
       RESPONSE=$(send_as_worker "{\"method\":\"send_message\",\"params\":{\"to\":\"$TARGET\",\"content\":\"$MESSAGE\",\"type\":\"direct\"},\"id\":1}")
       echo "Sent to $TARGET"
     else
@@ -119,10 +119,10 @@ case "${1:-help}" in
 
   broadcast)
     MESSAGE="$2"
-    [[ -z "$MESSAGE" ]] && echo "Uso: wt-msg broadcast \"msg\"" && exit 1
+    [[ -z "$MESSAGE" ]] && echo "Usage: wt-msg broadcast \"msg\"" && exit 1
 
     if daemon_available; then
-      # Usar daemon
+      # Use daemon
       RESPONSE=$(send_as_worker "{\"method\":\"broadcast\",\"params\":{\"data\":{\"message\":\"$MESSAGE\",\"from\":\"$WORKER_ID\"}},\"id\":1}")
       echo "Broadcast sent"
     else
@@ -137,7 +137,7 @@ case "${1:-help}" in
 
   check)
     if daemon_available; then
-      # Usar daemon
+      # Use daemon
       RESPONSE=$(send_as_worker '{"method":"get_messages","id":1}')
       count=$(echo "$RESPONSE" | python3 -c "
 import sys, json
@@ -167,7 +167,7 @@ except:
     echo "Messages for: $WORKER_ID"
 
     if daemon_available; then
-      # Usar daemon
+      # Use daemon
       RESPONSE=$(send_as_worker '{"method":"get_messages","id":1}')
       echo "$RESPONSE" | python3 -c "
 import sys, json
@@ -196,7 +196,7 @@ except Exception as e:
   status)
     echo "CWT Status"
 
-    # Mostrar projeto
+    # Show project
     if [[ -n "$CWT_ROOT" ]]; then
       echo "Project: $(basename "$CWT_ROOT")"
     fi

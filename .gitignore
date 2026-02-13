@@ -18,6 +18,9 @@ Thumbs.db
 *.swp
 *.swo
 
+# Claude Code local settings
+.claude/settings.local.json
+
 # Node (if using daemon)
 node_modules/
 package-lock.json

@@ -2,22 +2,22 @@
 # =============================================================================
 # CWT - Claude WorkTrees (tmux version)
 # =============================================================================
-# Uso:
-#   cwt init                      # Inicializa projeto CWT
-#   cwt front back sec            # Inicia com workers
-#   cwt -c front back             # Resume sessões (--continue)
-#   cwt --list                    # Lista sessões
-#   cwt --kill                    # Encerra sessão
+# Usage:
+#   cwt init                      # Initialize CWT project
+#   cwt front back sec            # Start with workers
+#   cwt -c front back             # Resume sessions (--continue)
+#   cwt --list                    # List sessions
+#   cwt --kill                    # Kill session
 # =============================================================================
 
-# Resolver symlinks para encontrar o diretório real do script
+# Resolve symlinks to find the real script directory
 resolve_symlink() {
   local target="$1"
-  # macOS não tem readlink -f, então fazemos manualmente
+  # macOS doesn't have readlink -f, so we do it manually
   while [[ -L "$target" ]]; do
     local dir=$(dirname "$target")
     target=$(readlink "$target")
-    # Se o target é relativo, resolver a partir do diretório
+    # If target is relative, resolve from the directory
     [[ "$target" != /* ]] && target="$dir/$target"
   done
   echo "$target"
@@ -28,7 +28,7 @@ CWT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
 CWT_INSTALL_DIR="$(dirname "$CWT_DIR")"
 CWT_VERSION=$(cat "$CWT_INSTALL_DIR/VERSION" 2>/dev/null || echo "unknown")
 
-# Detectar .cwt/ subindo a árvore de diretórios
+# Detect .cwt/ by walking up the directory tree
 find_cwt_root() {
   local dir="$PWD"
   while [[ "$dir" != "/" && "$dir" != "$HOME" ]]; do
@@ -41,7 +41,7 @@ find_cwt_root() {
   return 1
 }
 
-# Nome da sessão baseado no projeto
+# Session name based on project
 get_session_name() {
   local cwt_root=$(find_cwt_root)
   if [[ -n "$cwt_root" ]]; then
@@ -58,65 +58,65 @@ print_help() {
   cat << 'EOF'
 CWT - Claude WorkTrees (tmux)
 
-Uso: cwt [COMANDO] [OPÇÕES] [worker1] [worker2] ...
+Usage: cwt [COMMAND] [OPTIONS] [worker1] [worker2] ...
 
-Comandos:
-  init [OPÇÕES]        Inicializa projeto CWT
-    --name, -n NAME    Nome do projeto
-    --repo, -r REPO    Diretório do repo coordenador
-  update               Atualiza settings/hooks do projeto
+Commands:
+  init [OPTIONS]       Initialize CWT project
+    --name, -n NAME    Project name
+    --repo, -r REPO    Coordinator repo directory
+  update               Update project settings/hooks
 
-Opções:
-  -h, --help       Mostra esta ajuda
-  -v, --version    Mostra versão instalada
-  -c, --continue   Resume última sessão Claude de cada worktree
-  -r, --resume     Abre picker para escolher sessão Claude
-  -b, --base       Branch base do coordenador (para merges)
-  -l, --list       Lista sessões ativas
-  -a, --list-all   Lista TODAS as sessões CWT (todos projetos)
-  -k, --kill       Encerra sessão do projeto atual
-  -s, --status     Mostra status dos workers
-  --solo           Modo solo: só coordinator, sem workers
-  --strict         Modo strict: coordinator não pode editar código
-  --session NAME   Nome da sessão CWT (para resume coordenado)
-  --sessions       Lista sessões CWT salvas
+Options:
+  -h, --help       Show this help
+  -v, --version    Show installed version
+  -c, --continue   Resume last Claude session in each worktree
+  -r, --resume     Open picker to choose Claude session
+  -b, --base       Coordinator base branch (for merges)
+  -l, --list       List active sessions
+  -a, --list-all   List ALL CWT sessions (all projects)
+  -k, --kill       Kill current project session
+  -s, --status     Show worker status
+  --solo           Solo mode: coordinator only, no workers
+  --strict         Strict mode: coordinator cannot edit code
+  --session NAME   CWT session name (for coordinated resume)
+  --sessions       List saved CWT sessions
 
-Estrutura de Projeto:
-  ~/projects/meu-projeto/
-  ├── .cwt/              # Criado por 'cwt init'
-  ├── meu-repo/          # Coordenador (repo principal)
+Project Structure:
+  ~/projects/my-project/
+  ├── .cwt/              # Created by 'cwt init'
+  ├── my-repo/           # Coordinator (main repo)
   ├── workspace-front/   # Worker (worktree)
   └── workspace-back/    # Worker (worktree)
 
-Fluxo de Trabalho:
-  # Opção 1: De dentro do repo
-  cd meu-repo/
-  cwt init                    # Detecta repo automaticamente
-  wt-init front back          # Cria worktrees
+Workflow:
+  # Option 1: From inside the repo
+  cd my-repo/
+  cwt init                    # Auto-detects repo
+  wt-init front back          # Create worktrees
 
-  # Opção 2: De pasta de trabalho
-  cd minha-pasta/
-  git clone <url> meu-repo
-  cwt init --repo meu-repo    # Especifica coordenador
-  cd meu-repo && wt-init front back
+  # Option 2: From working directory
+  cd my-folder/
+  git clone <url> my-repo
+  cwt init --repo my-repo     # Specify coordinator
+  cd my-repo && wt-init front back
 
-  # Iniciar sessão
-  cwt                         # Detecta coord e worktrees
+  # Start session
+  cwt                         # Detects coord and worktrees
 
-Atalhos tmux:
-  Ctrl+b n       Próxima window
-  Ctrl+b p       Window anterior
-  Ctrl+b 0-9     Ir para window N
-  Ctrl+b d       Desconectar (continua rodando)
+Tmux shortcuts:
+  Ctrl+b n       Next window
+  Ctrl+b p       Previous window
+  Ctrl+b 0-9     Go to window N
+  Ctrl+b d       Detach (keeps running)
 EOF
 }
 
-# Comando budget - gerenciar budget do projeto
+# Budget command - manage project budget
 cwt_budget() {
   local cwt_root=$(find_cwt_root)
 
   if [[ -z "$cwt_root" ]]; then
-    echo "❌ Nenhum projeto CWT encontrado"
+    echo "❌ No CWT project found"
     exit 1
   fi
 
@@ -164,7 +164,7 @@ cwt_budget() {
   # Disable budget
   if [[ "$disable" == "true" ]]; then
     jq 'del(.budget)' "$config_file" > "$config_file.tmp" && mv "$config_file.tmp" "$config_file"
-    echo "✅ Budget desabilitado"
+    echo "✅ Budget disabled"
     exit 0
   fi
 
@@ -192,7 +192,7 @@ cwt_budget() {
     if [[ -z "$budget_enabled" ]]; then
       echo "Status: disabled"
       echo ""
-      echo "Para habilitar:"
+      echo "To enable:"
       echo "  cwt budget --limit 10 --period daily"
     else
       echo "Limit:     \$$(jq -r '.budget.limit // 0' "$config_file")"
@@ -211,14 +211,14 @@ cwt_budget() {
   fi
 }
 
-# Comando update - atualiza projeto existente com nova versão
+# Update command - update existing project with new version
 cwt_update() {
   local cwt_root=$(find_cwt_root)
   local install_dir="$HOME/.claude-worktrees"
 
   if [[ -z "$cwt_root" ]]; then
-    echo "❌ Nenhum projeto CWT encontrado"
-    echo "   Execute 'cwt init' primeiro"
+    echo "❌ No CWT project found"
+    echo "   Run 'cwt init' first"
     exit 1
   fi
 
@@ -229,23 +229,23 @@ cwt_update() {
   echo " CWT Update: $project_name"
   echo "═══════════════════════════════════════"
 
-  # Verificar se há sessão ativa
+  # Check if there is an active session
   if tmux has-session -t "=$session_name" 2>/dev/null; then
     echo ""
-    echo "⚠️  Sessão '$session_name' está ativa"
-    echo "   Para aplicar todas as mudanças, reinicie após o update:"
+    echo "⚠️  Session '$session_name' is active"
+    echo "   To apply all changes, restart after the update:"
     echo "   cwt --kill && cwt -c"
     echo ""
-    read -p "Continuar com update? [Y/n] " -n 1 -r
+    read -p "Continue with update? [Y/n] " -n 1 -r
     echo
     [[ $REPLY =~ ^[Nn]$ ]] && exit 0
   fi
 
-  # Ler config
+  # Read config
   local config_file="$cwt_root/.cwt/config.json"
   local coordinator=$(jq -r '.coordinator // empty' "$config_file" 2>/dev/null)
 
-  # Atualizar coordinator
+  # Update coordinator
   if [[ -n "$coordinator" && -d "$cwt_root/$coordinator" ]]; then
     echo ""
     echo "📦 Coordinator: $coordinator"
@@ -255,7 +255,7 @@ cwt_update() {
     # CLAUDE.md
     if [[ -f "$install_dir/templates/CLAUDE.coord.md" ]]; then
       cp "$install_dir/templates/CLAUDE.coord.md" "$cwt_root/$coordinator/CLAUDE.md"
-      echo "   ✅ CLAUDE.md atualizado"
+      echo "   ✅ CLAUDE.md updated"
     fi
 
     # settings.json (com MCP server configurado)
@@ -263,15 +263,15 @@ cwt_update() {
       sed -e "s|CWT_ROOT_PLACEHOLDER|$cwt_root|g" \
           -e "s|~/.claude-worktrees|$install_dir|g" \
           "$install_dir/templates/settings.coord.json" > "$claude_dir/settings.json"
-      echo "   ✅ settings.json atualizado (MCP: cwt)"
+      echo "   ✅ settings.json updated (MCP: cwt)"
     fi
 
-    # Symlinks para hooks
+    # Symlinks for hooks
     ln -sf "$install_dir/hooks/wt-check.sh" "$claude_dir/wt-check.sh"
     ln -sf "$install_dir/hooks/wt-sync.sh" "$claude_dir/wt-sync.sh"
-    echo "   ✅ hooks symlinks atualizados"
+    echo "   ✅ hooks symlinks updated"
 
-    # Skills CWT
+    # CWT Skills
     if [[ -d "$install_dir/templates/skills" ]]; then
       mkdir -p "$claude_dir/skills"
       for skill in cwt-coordinator cwt-kb cwt-budget; do
@@ -279,55 +279,55 @@ cwt_update() {
           cp -r "$install_dir/templates/skills/$skill" "$claude_dir/skills/"
         fi
       done
-      echo "   ✅ skills atualizadas (coordinator, kb, budget)"
+      echo "   ✅ skills updated (coordinator, kb, budget)"
     fi
 
-    # Garantir .claude/ no .gitignore (não commitar settings.json com paths locais)
+    # Ensure .claude/ is in .gitignore (don't commit settings.json with local paths)
     local gitignore="$cwt_root/$coordinator/.gitignore"
     if [[ -f "$gitignore" ]]; then
       if ! grep -q "^\.claude/$" "$gitignore" 2>/dev/null; then
         echo ".claude/" >> "$gitignore"
-        echo "   ✅ .claude/ adicionado ao .gitignore"
+        echo "   ✅ .claude/ added to .gitignore"
       fi
     else
       echo ".claude/" > "$gitignore"
-      echo "   ✅ .gitignore criado com .claude/"
+      echo "   ✅ .gitignore created with .claude/"
     fi
   fi
 
-  # Atualizar workers
-  # Primeiro tenta workers.txt, se vazio detecta automaticamente
+  # Update workers
+  # First try workers.txt, if empty detect automatically
   local workers_file="$cwt_root/.cwt/workers.txt"
   local workers_found=()
 
-  # Ler do workers.txt se existir e não estiver vazio
+  # Read from workers.txt if it exists and is not empty
   if [[ -f "$workers_file" && -s "$workers_file" ]]; then
     while IFS= read -r worker_path; do
       [[ -n "$worker_path" && -d "$worker_path" ]] && workers_found+=("$worker_path")
     done < "$workers_file"
   fi
 
-  # Se não encontrou workers no arquivo, detectar automaticamente
+  # If no workers found in file, detect automatically
   if [[ ${#workers_found[@]} -eq 0 ]]; then
     echo ""
-    echo "ℹ️  workers.txt vazio, detectando worktrees automaticamente..."
+    echo "ℹ️  workers.txt empty, detecting worktrees automatically..."
 
-    # Detectar diretórios workspace-* no projeto
+    # Detect workspace-* directories in project
     for dir in "$cwt_root"/workspace-*; do
       [[ -d "$dir" ]] && workers_found+=("$dir")
     done
 
-    # Detectar worktrees do git se coordinator é um repo
+    # Detect git worktrees if coordinator is a repo
     if [[ -n "$coordinator" && -d "$cwt_root/$coordinator/.git" ]]; then
       while IFS= read -r wt_line; do
         local wt_path=$(echo "$wt_line" | awk '{print $1}')
-        # Ignorar o próprio coordinator
+        # Skip the coordinator itself
         [[ "$wt_path" != "$cwt_root/$coordinator" && -d "$wt_path" ]] && workers_found+=("$wt_path")
       done < <(git -C "$cwt_root/$coordinator" worktree list 2>/dev/null | tail -n +2)
     fi
   fi
 
-  # Atualizar cada worker encontrado
+  # Update each found worker
   for worker_path in "${workers_found[@]}"; do
     [[ ! -d "$worker_path" ]] && continue
 
@@ -340,7 +340,7 @@ cwt_update() {
     # CLAUDE.md com WORKER_ID correto
     if [[ -f "$install_dir/templates/CLAUDE.worker.md" ]]; then
       sed "s/WORKER_ID/$worker_name/g" "$install_dir/templates/CLAUDE.worker.md" > "$worker_path/CLAUDE.md"
-      echo "   ✅ CLAUDE.md atualizado (WORKER_ID: $worker_name)"
+      echo "   ✅ CLAUDE.md updated (WORKER_ID: $worker_name)"
     fi
 
     # settings.json com WORKER_ID e MCP server configurado
@@ -349,15 +349,15 @@ cwt_update() {
           -e "s|CWT_ROOT_PLACEHOLDER|$cwt_root|g" \
           -e "s|~/.claude-worktrees|$install_dir|g" \
           "$install_dir/templates/settings.worker.json" > "$claude_dir/settings.json"
-      echo "   ✅ settings.json atualizado (MCP: cwt, WORKER_ID: $worker_name)"
+      echo "   ✅ settings.json updated (MCP: cwt, WORKER_ID: $worker_name)"
     fi
 
-    # Symlinks para hooks
+    # Symlinks for hooks
     ln -sf "$install_dir/hooks/wt-check.sh" "$claude_dir/wt-check.sh"
     ln -sf "$install_dir/hooks/wt-sync.sh" "$claude_dir/wt-sync.sh"
-    echo "   ✅ hooks symlinks atualizados"
+    echo "   ✅ hooks symlinks updated"
 
-    # Skills CWT
+    # CWT Skills
     if [[ -d "$install_dir/templates/skills" ]]; then
       mkdir -p "$claude_dir/skills"
       for skill in cwt-worker cwt-kb cwt-budget; do
@@ -365,31 +365,31 @@ cwt_update() {
           cp -r "$install_dir/templates/skills/$skill" "$claude_dir/skills/"
         fi
       done
-      echo "   ✅ skills atualizadas (worker, kb, budget)"
+      echo "   ✅ skills updated (worker, kb, budget)"
     fi
 
-    # Garantir .claude/ no .gitignore
+    # Ensure .claude/ is in .gitignore
     local gitignore="$worker_path/.gitignore"
     if [[ -f "$gitignore" ]]; then
       if ! grep -q "^\.claude/$" "$gitignore" 2>/dev/null; then
         echo ".claude/" >> "$gitignore"
-        echo "   ✅ .claude/ adicionado ao .gitignore"
+        echo "   ✅ .claude/ added to .gitignore"
       fi
     elif [[ -d "$worker_path/.git" ]] || [[ -f "$worker_path/.git" ]]; then
-      # Só criar .gitignore se é um repo/worktree git
+      # Only create .gitignore if it's a git repo/worktree
       echo ".claude/" > "$gitignore"
-      echo "   ✅ .gitignore criado com .claude/"
+      echo "   ✅ .gitignore created with .claude/"
     fi
   done
 
   if [[ ${#workers_found[@]} -eq 0 ]]; then
     echo ""
-    echo "ℹ️  Nenhum worker encontrado"
+    echo "ℹ️  No workers found"
   fi
 
-  # Sincronizar Knowledge Base templates para global
+  # Sync Knowledge Base templates to global
   echo ""
-  echo "📚 Sincronizando Knowledge Base..."
+  echo "📚 Syncing Knowledge Base..."
 
   local global_kb="$HOME/.cwt/knowledge"
   local templates_kb="$install_dir/templates/knowledge"
@@ -397,7 +397,7 @@ cwt_update() {
   if [[ -d "$templates_kb" ]]; then
     mkdir -p "$global_kb"
 
-    # Copiar templates que não existem ou são mais novos
+    # Copy templates that don't exist or are newer
     for category in patterns guidelines; do
       local src_dir="$templates_kb/$category"
       local dst_dir="$global_kb/$category"
@@ -410,7 +410,7 @@ cwt_update() {
           local basename=$(basename "$file")
           local dst_file="$dst_dir/$basename"
 
-          # Copiar se não existe ou template é mais novo
+          # Copy if doesn't exist or template is newer
           if [[ ! -f "$dst_file" ]] || [[ "$file" -nt "$dst_file" ]]; then
             cp "$file" "$dst_file"
             echo "   ✅ $category/$basename"
@@ -419,7 +419,7 @@ cwt_update() {
       fi
     done
 
-    # Copiar index.json se não existe
+    # Copy index.json if it doesn't exist
     if [[ -f "$templates_kb/index.json" && ! -f "$global_kb/index.json" ]]; then
       cp "$templates_kb/index.json" "$global_kb/index.json"
       echo "   ✅ index.json"
@@ -427,23 +427,23 @@ cwt_update() {
 
     echo "   Global KB: $global_kb"
   else
-    echo "   ℹ️  Templates não encontrados em $templates_kb"
+    echo "   ℹ️  Templates not found in $templates_kb"
   fi
 
   echo ""
   echo "═══════════════════════════════════════"
-  echo " ✅ Projeto atualizado"
+  echo " ✅ Project updated"
   echo "═══════════════════════════════════════"
 }
 
-# Comando init
+# Init command
 cwt_init() {
   local project_name=""
   local coordinator=""
   local base_branch=""
   local force=false
 
-  # Parse args do init
+  # Parse init args
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --name|-n)
@@ -468,75 +468,75 @@ cwt_init() {
     esac
   done
 
-  # Default: nome do diretório atual
+  # Default: current directory name
   [[ -z "$project_name" ]] && project_name=$(basename "$PWD")
 
-  # Verificar se já existe
+  # Check if already exists
   if [[ -d ".cwt" ]]; then
-    echo "⚠️  Projeto CWT já inicializado neste diretório"
+    echo "⚠️  CWT project already initialized in this directory"
     echo "   Config: .cwt/config.json"
     cat .cwt/config.json 2>/dev/null
     exit 1
   fi
 
-  # Se não especificou coordenador, tentar detectar
+  # If no coordinator specified, try to detect
   if [[ -z "$coordinator" ]]; then
-    # Verificar se estamos dentro de um repo git
+    # Check if we are inside a git repo
     if git rev-parse --git-dir &>/dev/null; then
-      # Estamos em um repo - usar o nome do diretório atual
+      # We are in a repo - use current directory name
       coordinator=$(basename "$PWD")
-      echo "ℹ️  Detectado repo git: $coordinator"
+      echo "ℹ️  Detected git repo: $coordinator"
     fi
   fi
 
-  # Detectar branch base se não especificada
+  # Detect base branch if not specified
   if [[ -z "$base_branch" ]]; then
     if git rev-parse --git-dir &>/dev/null; then
       base_branch=$(git branch --show-current)
     fi
   fi
 
-  # Criar branch de trabalho se estamos em um repo
+  # Create work branch if we are in a repo
   local work_branch=""
   if git rev-parse --git-dir &>/dev/null; then
     work_branch="cwt/$project_name"
 
-    # Verificar se repo tem commits
+    # Check if repo has commits
     if ! git rev-parse HEAD &>/dev/null; then
       echo ""
-      echo "ℹ️  Repo sem commits ainda - branch protection desativada"
+      echo "ℹ️  Repo has no commits yet - branch protection disabled"
       work_branch="$base_branch"
-    # Verificar se estamos em branch protegida
+    # Check if we are on a protected branch
     elif [[ "$base_branch" == "main" || "$base_branch" == "master" || "$base_branch" == "dev" || "$base_branch" == "develop" ]]; then
       if [[ "$force" != "true" ]]; then
         echo ""
-        echo "⚠️  Branch '$base_branch' é protegida."
-        echo "   Criando branch de trabalho: $work_branch"
+        echo "⚠️  Branch '$base_branch' is protected."
+        echo "   Creating work branch: $work_branch"
         echo ""
 
-        # Criar branch de trabalho se não existe
+        # Create work branch if it doesn't exist
         if ! git show-ref --verify --quiet "refs/heads/$work_branch"; then
           if git branch "$work_branch" "$base_branch" 2>/dev/null; then
-            echo "   ✅ Branch '$work_branch' criada a partir de '$base_branch'"
+            echo "   ✅ Branch '$work_branch' created from '$base_branch'"
           else
-            echo "   ❌ Falha ao criar branch '$work_branch'"
+            echo "   ❌ Failed to create branch '$work_branch'"
             work_branch="$base_branch"
           fi
         else
-          echo "   ℹ️  Branch '$work_branch' já existe"
+          echo "   ℹ️  Branch '$work_branch' already exists"
         fi
 
-        # Checkout para branch de trabalho (só se criada com sucesso)
+        # Checkout to work branch (only if created successfully)
         if [[ "$work_branch" != "$base_branch" ]] && git show-ref --verify --quiet "refs/heads/$work_branch"; then
           if git checkout "$work_branch" 2>/dev/null; then
-            echo "   ✅ Checkout para '$work_branch'"
+            echo "   ✅ Checked out to '$work_branch'"
           else
-            echo "   ❌ Falha no checkout para '$work_branch'"
+            echo "   ❌ Failed to checkout '$work_branch'"
             work_branch="$base_branch"
           fi
         fi
       else
-        echo "⚠️  --force: Trabalhando diretamente em '$base_branch'"
+        echo "⚠️  --force: Working directly on '$base_branch'"
         work_branch="$base_branch"
       fi
     else
@@ -544,7 +544,7 @@ cwt_init() {
     fi
   fi
 
-  # Criar estrutura
+  # Create structure
   mkdir -p .cwt
 
   cat > .cwt/config.json << EOF
@@ -561,10 +561,10 @@ EOF
   echo '{"workers":{},"messages":[]}' > .cwt/state.json
 
   echo "═══════════════════════════════════════"
-  echo " ✅ Projeto CWT inicializado"
+  echo " ✅ CWT project initialized"
   echo "═══════════════════════════════════════"
-  echo " Nome:    $project_name"
-  echo " Sessão:  cwt-$project_name"
+  echo " Name:    $project_name"
+  echo " Session: cwt-$project_name"
   if [[ -n "$coordinator" ]]; then
     echo " Coord:   $coordinator"
   fi
@@ -575,19 +575,19 @@ EOF
     echo " Work:    $work_branch"
   fi
   echo " Config:  .cwt/config.json"
-  echo " Estado:  .cwt/state.json"
+  echo " State:   .cwt/state.json"
   echo "═══════════════════════════════════════"
   echo ""
   if [[ -z "$coordinator" ]]; then
-    echo "Próximos passos:"
-    echo "  1. Clone o repo: git clone <url> <nome>"
-    echo "  2. Configure:    cwt config --repo <nome>"
-    echo "  3. Worktrees:    cd <nome> && wt-init worker1 worker2"
-    echo "  4. Inicie:       cwt"
+    echo "Next steps:"
+    echo "  1. Clone the repo: git clone <url> <name>"
+    echo "  2. Configure:      cwt config --repo <name>"
+    echo "  3. Worktrees:      cd <name> && wt-init worker1 worker2"
+    echo "  4. Start:          cwt"
   else
-    echo "Próximos passos:"
-    echo "  1. Crie worktrees: wt-init worker1 worker2"
-    echo "  2. Inicie: cwt"
+    echo "Next steps:"
+    echo "  1. Create worktrees: wt-init worker1 worker2"
+    echo "  2. Start: cwt"
   fi
   echo ""
 }
@@ -598,7 +598,7 @@ SOLO_MODE=""
 STRICT_MODE=""
 WORKERS=()
 
-# Primeiro argumento pode ser comando
+# First argument can be a command
 case "${1:-}" in
   init)
     shift
@@ -629,17 +629,17 @@ while [[ $# -gt 0 ]]; do
       exit 0
       ;;
     -l|--list)
-      echo "═══ Sessão do projeto atual ═══"
-      tmux list-sessions 2>/dev/null | grep "^$SESSION_NAME" || echo "Nenhuma sessão ativa para: $SESSION_NAME"
+      echo "═══ Current project session ═══"
+      tmux list-sessions 2>/dev/null | grep "^$SESSION_NAME" || echo "No active session for: $SESSION_NAME"
       exit 0
       ;;
     -a|--list-all)
-      echo "═══ Todas as sessões CWT ═══"
-      tmux list-sessions 2>/dev/null | grep "^cwt" || echo "Nenhuma sessão CWT ativa"
+      echo "═══ All CWT sessions ═══"
+      tmux list-sessions 2>/dev/null | grep "^cwt" || echo "No active CWT sessions"
       exit 0
       ;;
     --daemon|-d)
-      # Iniciar apenas o MCP daemon (sem tmux/workers)
+      # Start only the MCP daemon (without tmux/workers)
       echo "═══ Starting MCP Daemon ═══"
       if [[ -S "$CWT_ROOT/.cwt/cwt.sock" ]]; then
         echo "Daemon already running: $CWT_ROOT/.cwt/cwt.sock"
@@ -663,7 +663,7 @@ while [[ $# -gt 0 ]]; do
     --sessions)
       sessions_dir="$CWT_ROOT/.cwt/sessions"
       if [[ -d "$sessions_dir" ]]; then
-        echo "═══ Sessões salvas ═══"
+        echo "═══ Saved sessions ═══"
         for f in "$sessions_dir"/*.json; do
           [[ -f "$f" ]] || continue
           name=$(basename "$f" .json)
@@ -672,18 +672,18 @@ while [[ $# -gt 0 ]]; do
           echo "  $name ($created): $workers"
         done
       else
-        echo "Nenhuma sessão salva"
+        echo "No saved sessions"
       fi
       exit 0
       ;;
     -k|--kill)
       if tmux has-session -t "=$SESSION_NAME" 2>/dev/null; then
         tmux kill-session -t "=$SESSION_NAME"
-        echo "Sessão '$SESSION_NAME' encerrada"
+        echo "Session '$SESSION_NAME' killed"
       else
-        echo "Sessão '$SESSION_NAME' não existe"
+        echo "Session '$SESSION_NAME' does not exist"
       fi
-      # Parar daemon e pulser
+      # Stop daemon and pulser
       if [[ -n "$CWT_ROOT" ]]; then
         for pid_file in "$CWT_ROOT/.cwt/daemon.pid" "$CWT_ROOT/.cwt/pulser.pid"; do
           if [[ -f "$pid_file" ]]; then
@@ -700,7 +700,7 @@ while [[ $# -gt 0 ]]; do
         echo "═══ CWT: $SESSION_NAME ═══"
         tmux list-windows -t "=$SESSION_NAME" -F "  #I: #W"
       else
-        echo "Sessão '$SESSION_NAME' não está rodando"
+        echo "Session '$SESSION_NAME' is not running"
       fi
       exit 0
       ;;
@@ -729,8 +729,8 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     -*)
-      echo "Opção desconhecida: $1"
-      echo "Use 'cwt --help' para ver opções"
+      echo "Unknown option: $1"
+      echo "Use 'cwt --help' to see options"
       exit 1
       ;;
     *)
@@ -740,19 +740,19 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# Se sessão existe e não passou workers, reconecta
+# If session exists and no workers were passed, reconnect
 if tmux has-session -t "=$SESSION_NAME" 2>/dev/null; then
   if [[ ${#WORKERS[@]} -eq 0 ]]; then
     exec tmux attach -t "=$SESSION_NAME"
   else
-    echo "Sessão '$SESSION_NAME' já existe."
-    echo "Use: cwt --kill  para encerrar"
-    echo "Ou:  cwt         para reconectar"
+    echo "Session '$SESSION_NAME' already exists."
+    echo "Use: cwt --kill  to kill it"
+    echo "Or:  cwt         to reconnect"
     exit 1
   fi
 fi
 
-# Iniciar nova sessão
+# Start new session
 export CONTINUE_FLAG
 export SOLO_MODE
 export STRICT_MODE

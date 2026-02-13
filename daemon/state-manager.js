@@ -1,6 +1,6 @@
 /**
- * State Manager - Gerencia estado em memória com persistência
- * Adaptado para CWT multi-projeto
+ * State Manager - In-memory state management with persistence
+ * Adapted for CWT multi-project
  */
 
 const fs = require('fs');
@@ -13,7 +13,7 @@ class StateManager {
     this.state = this.loadState();
     this.dirty = false;
 
-    // Auto-save a cada 30 segundos se houver mudanças
+    // Auto-save every 30 seconds if there are changes
     this.saveInterval = setInterval(() => {
       if (this.dirty) {
         this.persist();
@@ -38,7 +38,7 @@ class StateManager {
       if (fs.existsSync(this.stateFile)) {
         const data = fs.readFileSync(this.stateFile, 'utf8');
         const loaded = JSON.parse(data);
-        // Merge com defaults para garantir que todos os campos existam
+        // Merge with defaults to ensure all fields exist
         return { ...defaults, ...loaded };
       }
     } catch (e) {
@@ -63,7 +63,7 @@ class StateManager {
     }
   }
 
-  // Obter valor por path (ex: "workers.worker-1.status")
+  // Get value by path (e.g.: "workers.worker-1.status")
   get(keyPath) {
     if (!keyPath) return this.state;
 
@@ -78,7 +78,7 @@ class StateManager {
     return value;
   }
 
-  // Setar valor por path
+  // Set value by path
   set(keyPath, value) {
     const keys = keyPath.split('.');
     const lastKey = keys.pop();
@@ -97,7 +97,7 @@ class StateManager {
     return true;
   }
 
-  // Registrar worker
+  // Register worker
   registerWorker(workerId, capabilities = []) {
     this.state.workers[workerId] = {
       id: workerId,
@@ -111,7 +111,7 @@ class StateManager {
     return this.state.workers[workerId];
   }
 
-  // Atualizar heartbeat
+  // Update heartbeat
   heartbeat(workerId) {
     if (this.state.workers[workerId]) {
       this.state.workers[workerId].lastHeartbeat = new Date().toISOString();
@@ -122,7 +122,7 @@ class StateManager {
     return false;
   }
 
-  // Desregistrar worker
+  // Unregister worker
   unregisterWorker(workerId) {
     if (this.state.workers[workerId]) {
       this.state.workers[workerId].status = 'disconnected';
@@ -133,12 +133,12 @@ class StateManager {
     return false;
   }
 
-  // Listar workers ativos
+  // List active workers
   getActiveWorkers() {
     return Object.values(this.state.workers).filter(w => w.status === 'active');
   }
 
-  // Adicionar task à fila
+  // Add task to queue
   addTask(task) {
     task.id = task.id || `task-${Date.now()}`;
     task.createdAt = new Date().toISOString();
@@ -148,7 +148,7 @@ class StateManager {
     return task;
   }
 
-  // Atualizar task
+  // Update task
   updateTask(taskId, updates) {
     const task = this.state.workQueue.find(t => t.id === taskId);
     if (task) {
@@ -159,7 +159,7 @@ class StateManager {
     return null;
   }
 
-  // Completar task
+  // Complete task
   completeTask(taskId, summary) {
     const taskIndex = this.state.workQueue.findIndex(t => t.id === taskId);
     if (taskIndex >= 0) {
@@ -174,7 +174,7 @@ class StateManager {
     return null;
   }
 
-  // Adicionar finding
+  // Add finding
   addFinding(finding) {
     finding.id = finding.id || `finding-${Date.now()}`;
     finding.createdAt = new Date().toISOString();
@@ -184,7 +184,7 @@ class StateManager {
     return finding;
   }
 
-  // Adicionar blocker
+  // Add blocker
   addBlocker(blocker) {
     blocker.id = blocker.id || `blocker-${Date.now()}`;
     blocker.createdAt = new Date().toISOString();
@@ -194,7 +194,7 @@ class StateManager {
     return blocker;
   }
 
-  // Adicionar mensagem (histórico de comunicação)
+  // Add message (communication history)
   addMessage(from, to, content, type = 'info') {
     const message = {
       id: `msg-${Date.now()}`,
@@ -208,7 +208,7 @@ class StateManager {
 
     this.state.messages.push(message);
 
-    // Manter apenas últimas 200 mensagens
+    // Keep only last 200 messages
     if (this.state.messages.length > 200) {
       this.state.messages = this.state.messages.slice(-200);
     }
@@ -217,7 +217,7 @@ class StateManager {
     return message;
   }
 
-  // Marcar mensagens como lidas
+  // Mark messages as read
   markMessagesRead(workerId) {
     let count = 0;
     for (const msg of this.state.messages) {
@@ -232,7 +232,7 @@ class StateManager {
     return count;
   }
 
-  // Obter mensagens para um worker (desde timestamp)
+  // Get messages for a worker (since timestamp)
   getMessages(workerId, since) {
     return this.state.messages.filter(m => {
       const isRecent = !since || new Date(m.timestamp) > new Date(since);
@@ -241,7 +241,7 @@ class StateManager {
     });
   }
 
-  // Obter mensagens não lidas para um worker
+  // Get unread messages for a worker
   getUnreadMessages(workerId) {
     return this.state.messages.filter(m => {
       const isForWorker = m.to === null || m.to === 'all' || m.to === workerId;
