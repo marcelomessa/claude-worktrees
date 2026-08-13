@@ -71,7 +71,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "~/.claude-worktrees/hooks/bash-validator.sh",
+            "command": "[ -x ~/.claude-worktrees/hooks/bash-validator.sh ] || exit 0; exec ~/.claude-worktrees/hooks/bash-validator.sh",
             "timeout": 5000
           }
         ]
@@ -81,7 +81,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "~/.claude-worktrees/hooks/file-protector.sh",
+            "command": "[ -x ~/.claude-worktrees/hooks/file-protector.sh ] || exit 0; exec ~/.claude-worktrees/hooks/file-protector.sh",
             "timeout": 3000
           }
         ]
@@ -91,7 +91,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "~/.claude-worktrees/hooks/file-protector.sh",
+            "command": "[ -x ~/.claude-worktrees/hooks/file-protector.sh ] || exit 0; exec ~/.claude-worktrees/hooks/file-protector.sh",
             "timeout": 3000
           }
         ]
