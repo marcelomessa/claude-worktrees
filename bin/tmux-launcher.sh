@@ -669,6 +669,10 @@ else
 fi
 sleep 0.3
 
+# Stamp the owning project on the session so that another project which maps to
+# the same session name refuses to attach instead of hijacking this one.
+tmux set-option -t "=$SESSION_NAME" @cwt_root "${PROJECT_ROOT:-$PROJECT_DIR}" 2>/dev/null
+
 # Enable logging for coordinator
 tmux pipe-pane -t "$SESSION_NAME:0" -o "cat >> '$LOG_DIR/cwt-coordinator-$TIMESTAMP.log'"
 

@@ -41,15 +41,15 @@ find_cwt_root() {
   return 1
 }
 
-# Session name based on project
+# Session name based on project.
+# Prefers .cwt/config.json "name" (set by `cwt init --name`) so that two
+# projects sharing a directory basename can still be told apart.
 get_session_name() {
   local cwt_root=$(find_cwt_root)
-  if [[ -n "$cwt_root" ]]; then
-    local project_name=$(basename "$cwt_root")
-    echo "cwt-$project_name"
-  else
-    echo "cwt"
-  fi
+  [[ -z "$cwt_root" ]] && { echo "cwt"; return; }
+
+  local name=$(jq -r '.name // empty' "$cwt_root/.cwt/config.json" 2>/dev/null)
+  echo "cwt-${name:-$(basename "$cwt_root")}"
 }
 
 SESSION_NAME=$(get_session_name)
@@ -222,8 +222,8 @@ cwt_update() {
     exit 1
   fi
 
-  local project_name=$(basename "$cwt_root")
-  local session_name="cwt-$project_name"
+  local session_name=$(get_session_name)
+  local project_name="${session_name#cwt-}"
 
   echo "═══════════════════════════════════════"
   echo " CWT Update: $project_name"
@@ -742,6 +742,19 @@ done
 
 # If session exists and no workers were passed, reconnect
 if tmux has-session -t "=$SESSION_NAME" 2>/dev/null; then
+  # Refuse to touch a session that belongs to a different project (same
+  # session name via an identical directory basename).
+  SESSION_OWNER=$(tmux show-option -qv -t "=$SESSION_NAME" @cwt_root 2>/dev/null)
+  CURRENT_ROOT=$(find_cwt_root)
+  if [[ -n "$SESSION_OWNER" && -n "$CURRENT_ROOT" && "$SESSION_OWNER" != "$CURRENT_ROOT" ]]; then
+    echo "❌ Session '$SESSION_NAME' belongs to another project:"
+    echo "   $SESSION_OWNER"
+    echo ""
+    echo "   Give this project a distinct name:"
+    echo "     cwt init --name <other-name>"
+    exit 1
+  fi
+
   if [[ ${#WORKERS[@]} -eq 0 ]]; then
     exec tmux attach -t "=$SESSION_NAME"
   else
