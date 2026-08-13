@@ -15,7 +15,7 @@ find_cwt_root() {
 
   # 2. Walk up tree
   local dir="$PWD"
-  while [[ "$dir" != "/" ]]; do
+  while [[ "$dir" != "/" && "$dir" != "$HOME" ]]; do
     if [[ -d "$dir/.cwt" ]]; then
       echo "$dir"
       return 0

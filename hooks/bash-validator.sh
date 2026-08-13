@@ -32,7 +32,7 @@ find_cwt_root() {
   fi
 
   local dir="$PWD"
-  while [[ "$dir" != "/" ]]; do
+  while [[ "$dir" != "/" && "$dir" != "$HOME" ]]; do
     if [[ -d "$dir/.cwt" ]]; then
       echo "$dir"
       return 0
@@ -114,10 +114,25 @@ fi
 # =============================================================================
 # UNIVERSAL RESTRICTIONS (everyone, including coordinator)
 # =============================================================================
+# Catastrophic and irreversible at the machine level - always enforced.
 echo "$COMMAND" | grep -qE "rm\s+-rf\s+(/|~|\*)" && block "dangerous rm -rf"
 echo "$COMMAND" | grep -qE ">\s*/dev/sd" && block "write to disk device"
 echo "$COMMAND" | grep -qE "mkfs\." && block "mkfs forbidden"
 echo "$COMMAND" | grep -qE "dd\s+if=.*of=/dev" && block "dd to device"
+
+# =============================================================================
+# CWT WORKFLOW RESTRICTIONS
+# =============================================================================
+# The git rules below encode CWT's multi-agent workflow, not machine safety.
+# `cwt init` writes .claude/settings.json into the project, and Claude Code
+# loads it for EVERY session under that directory - including plain sessions
+# that have nothing to do with CWT. Applying workflow rules there is surprising,
+# so scope them to actual CWT usage: inside a CWT project, or as a worker.
+IN_CWT=false
+[[ -n "$CWT_ROOT" || -n "$WORKER_ID" ]] && IN_CWT=true
+
+if [[ "$IN_CWT" == "true" ]]; then
+
 echo "$COMMAND" | grep -qE "git\s+add\s+(-A|--all|\s\.(\s|$))" && block "git add -A/. - use specific files"
 
 # =============================================================================
@@ -158,6 +173,8 @@ echo "$COMMAND" | grep -qE "git\s+reset\s+HEAD~" && block "CAUTION: git reset HE
 
 # git revert --no-commit (may cause destructive conflicts)
 echo "$COMMAND" | grep -qE "git\s+revert\s+--no-commit" && block "CAUTION: git revert --no-commit modifies files without commit. Check pending changes first. WAIT for user authorization."
+
+fi  # end IN_CWT
 
 # =============================================================================
 # APPLY DENY FROM settings.json (enforce even in skip-permissions mode)

@@ -22,7 +22,7 @@ find_socket() {
 
   # 2. Walk up tree looking for .cwt/cwt.sock
   local dir="$PWD"
-  while [[ "$dir" != "/" ]]; do
+  while [[ "$dir" != "/" && "$dir" != "$HOME" ]]; do
     if [[ -S "$dir/.cwt/cwt.sock" ]]; then
       echo "$dir/.cwt/cwt.sock"
       return 0
@@ -72,7 +72,7 @@ mode_status() {
     cwt_root="$CWT_PROJECT_ROOT"
   else
     local dir="$PWD"
-    while [[ "$dir" != "/" ]]; do
+    while [[ "$dir" != "/" && "$dir" != "$HOME" ]]; do
       if [[ -d "$dir/.cwt" ]]; then
         cwt_root="$dir"
         break
