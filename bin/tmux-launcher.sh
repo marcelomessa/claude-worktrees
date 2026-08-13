@@ -176,11 +176,27 @@ if [[ -n "$PROJECT_ROOT" && -d "$PROJECT_ROOT/.cwt" ]]; then
   STATE_FILE="$PROJECT_ROOT/.cwt/state.json"
   WORKSPACES_FILE="$PROJECT_ROOT/.cwt/workers.txt"
   LOG_DIR="${CWT_LOG_DIR:-$PROJECT_ROOT/.cwt/logs}"
+  CWT_STATE_DIR="$PROJECT_ROOT/.cwt"
 else
   PROJECT_DIR="${CWT_PROJECT:-$(pwd)}"
   STATE_FILE="/tmp/claude-wt-state.json"
   WORKSPACES_FILE="/tmp/cwt-workers-list.txt"
   LOG_DIR="${CWT_LOG_DIR:-/tmp/cwt-logs}"
+
+  # Legacy mode needs a git repo to coordinate. Without .cwt/ AND without git
+  # there is no project at all - bail out instead of resolving paths against an
+  # empty $PROJECT_ROOT (which would target the filesystem root).
+  if ! git -C "$PROJECT_DIR" rev-parse --git-dir >/dev/null 2>&1; then
+    echo "❌ '$PROJECT_DIR' is neither a CWT project nor a git repository."
+    echo ""
+    echo "   Run 'cwt init' here to initialize a CWT project,"
+    echo "   or cd into a git repository first."
+    exit 1
+  fi
+
+  # State lives outside the repo in legacy mode: keyed by path so that two
+  # legacy repos never share a socket or a pid file.
+  CWT_STATE_DIR="${TMPDIR:-/tmp}/cwt-legacy-$(printf '%s' "$PROJECT_DIR" | shasum | cut -c1-8)"
 fi
 
 # ============================================================================
@@ -544,7 +560,12 @@ if [[ "$PROJECT_MODE" == "project" ]]; then
     exit 1
   fi
 else
-  COORD_DIR=$(git -C "$PROJECT_DIR" worktree list --porcelain | head -1 | cut -d' ' -f2-)
+  COORD_DIR=$(git -C "$PROJECT_DIR" worktree list --porcelain 2>/dev/null | head -1 | cut -d' ' -f2-)
+  if [[ -z "$COORD_DIR" || ! -d "$COORD_DIR" ]]; then
+    echo "❌ Coordinator not detected in $PROJECT_DIR"
+    echo "   'git worktree list' returned nothing usable."
+    exit 1
+  fi
   COORD_DIR_NAME=$(basename "$COORD_DIR")
 fi
 
@@ -587,7 +608,7 @@ mkdir -p "$LOG_DIR"
 echo "📝 Logs: $LOG_DIR/cwt-*-$TIMESTAMP.log"
 
 # Create history directory (isolates HISTFILE per worker)
-mkdir -p "$PROJECT_ROOT/.cwt/history"
+mkdir -p "$CWT_STATE_DIR/history"
 
 # ============================================================================
 # START COMMUNICATION DAEMON
@@ -595,8 +616,8 @@ mkdir -p "$PROJECT_ROOT/.cwt/history"
 
 CWT_DAEMON_DIR="$(cd "$CWT_BIN_DIR/../daemon" && pwd)"
 DAEMON_LOG="$LOG_DIR/cwt-daemon-$TIMESTAMP.log"
-DAEMON_PID_FILE="$PROJECT_ROOT/.cwt/daemon.pid"
-CWT_SOCKET="$PROJECT_ROOT/.cwt/cwt.sock"
+DAEMON_PID_FILE="$CWT_STATE_DIR/daemon.pid"
+CWT_SOCKET="$CWT_STATE_DIR/cwt.sock"
 
 # Stop previous daemon if it exists
 if [[ -f "$DAEMON_PID_FILE" ]]; then
@@ -615,7 +636,7 @@ rm -f "$CWT_SOCKET"
 # Start daemon
 if [[ -f "$CWT_DAEMON_DIR/index.js" ]] && command -v node &>/dev/null; then
   echo "🚀 Starting communication daemon..."
-  nohup node "$CWT_DAEMON_DIR/index.js" "$PROJECT_ROOT" > "$DAEMON_LOG" 2>&1 &
+  CWT_STATE_DIR="$CWT_STATE_DIR" nohup node "$CWT_DAEMON_DIR/index.js" "${PROJECT_ROOT:-$PROJECT_DIR}" > "$DAEMON_LOG" 2>&1 &
   DAEMON_PID=$!
   sleep 1
 
