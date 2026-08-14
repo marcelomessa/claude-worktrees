@@ -744,7 +744,10 @@ done
 if tmux has-session -t "=$SESSION_NAME" 2>/dev/null; then
   # Refuse to touch a session that belongs to a different project (same
   # session name via an identical directory basename).
-  SESSION_OWNER=$(tmux show-option -qv -t "=$SESSION_NAME" @cwt_root 2>/dev/null)
+  # Read the stamp by exact name: show-option rejects the "=" prefix and would
+  # otherwise fall back to matching a longer session name.
+  SESSION_OWNER=$(tmux list-sessions -F '#{session_name}|#{@cwt_root}' 2>/dev/null \
+                  | awk -F'|' -v n="$SESSION_NAME" '$1 == n { print $2 }')
   CURRENT_ROOT=$(find_cwt_root)
   if [[ -n "$SESSION_OWNER" && -n "$CURRENT_ROOT" && "$SESSION_OWNER" != "$CURRENT_ROOT" ]]; then
     echo "❌ Session '$SESSION_NAME' belongs to another project:"
