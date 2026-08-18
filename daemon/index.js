@@ -24,11 +24,13 @@ const KnowledgeManager = require('./knowledge-manager');
 
 // Determine project root
 const PROJECT_ROOT = process.argv[2] || process.cwd();
-const CWT_DIR = path.join(PROJECT_ROOT, '.cwt');
+// In legacy mode (git worktrees without .cwt/) the launcher keeps state outside
+// the repo and points us at it via CWT_STATE_DIR.
+const CWT_DIR = process.env.CWT_STATE_DIR || path.join(PROJECT_ROOT, '.cwt');
 
-// Validate that .cwt exists
+// Validate that the state directory exists
 if (!fs.existsSync(CWT_DIR)) {
-  console.error(`Error: .cwt directory not found in ${PROJECT_ROOT}`);
+  console.error(`Error: state directory not found: ${CWT_DIR}`);
   console.error('Run "cwt init" first to initialize the project.');
   process.exit(1);
 }

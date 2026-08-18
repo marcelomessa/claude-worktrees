@@ -115,7 +115,10 @@ elif [[ -f "$HOME/.bashrc" ]]; then
 fi
 
 if [[ -n "$SHELL_RC" ]]; then
-  if ! grep -q "claude-worktrees" "$SHELL_RC"; then
+  # Match the marker we actually write, otherwise every re-run appends another
+  # PATH block (the old check looked for "claude-worktrees", which never
+  # matches the "# Claude Worktrees" comment).
+  if ! grep -q "^# Claude Worktrees$" "$SHELL_RC"; then
     echo "" >> "$SHELL_RC"
     echo "# Claude Worktrees" >> "$SHELL_RC"
     echo "export PATH=\"\$HOME/.local/bin:\$PATH\"" >> "$SHELL_RC"

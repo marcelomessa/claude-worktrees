@@ -18,6 +18,26 @@ WORKER_ID="${CLAUDE_WORKER_ID:-}"
 # Coordinator can edit any file
 [[ "$WORKER_ID" == "coordinator" ]] && exit 0
 
+# Locate the CWT project, if any
+find_cwt_root() {
+  if [[ -n "$CWT_PROJECT_ROOT" && -d "$CWT_PROJECT_ROOT/.cwt" ]]; then
+    echo "$CWT_PROJECT_ROOT"
+    return 0
+  fi
+
+  local dir="$PWD"
+  while [[ "$dir" != "/" && "$dir" != "$HOME" ]]; do
+    [[ -d "$dir/.cwt" ]] && { echo "$dir"; return 0; }
+    dir=$(dirname "$dir")
+  done
+  return 1
+}
+
+# These are CWT worker restrictions, not general file safety. `cwt init` leaves
+# .claude/settings.json in the project, which Claude Code loads for every
+# session under it - so stay out of the way of plain, non-CWT sessions.
+[[ -z "$WORKER_ID" && -z "$(find_cwt_root)" ]] && exit 0
+
 # Extract tool name
 TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // empty')
 
